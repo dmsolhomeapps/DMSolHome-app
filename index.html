@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventario - DM Sol Home</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div id="login-screen" class="screen">
+    <div class="login-card">
+      <h1>Inventario</h1>
+      <p>Compras, proveedores y stock</p>
+      <button id="btn-google-login" class="btn btn-primary">Iniciar sesión con Google</button>
+    </div>
+  </div>
+
+  <div id="denied-screen" class="screen hidden">
+    <div class="login-card">
+      <h1>Acceso no autorizado</h1>
+      <p>La cuenta <strong id="denied-email"></strong> no está habilitada para usar este sistema. Pedile a quien administra la app que te agregue.</p>
+      <button id="btn-logout-denied" class="btn btn-secondary">Cerrar sesión</button>
+    </div>
+  </div>
+
+  <div id="app-screen" class="screen hidden">
+    <header class="topbar">
+      <div class="topbar-brand">Inventario</div>
+      <div class="topbar-user">
+        <span id="user-name"></span>
+        <button id="btn-logout" class="btn btn-text">Salir</button>
+      </div>
+    </header>
+    <div class="layout">
+      <nav class="sidebar">
+        <button class="nav-item active" data-section="proveedores">Proveedores</button>
+        <button class="nav-item" data-section="inventario">Inventario</button>
+        <button class="nav-item" data-section="stock">Stock</button>
+        <button class="nav-item" data-section="ordenes">Órdenes de compra</button>
+        <button class="nav-item" data-section="recepciones">Recepciones</button>
+        <button class="nav-item" data-section="usuarios">Usuarios</button>
+      </nav>
+      <main class="content">
+        <section id="section-proveedores" class="section"></section>
+        <section id="section-inventario" class="section hidden"><p class="proximamente">Próximamente.</p></section>
+        <section id="section-stock" class="section hidden"><p class="proximamente">Próximamente.</p></section>
+        <section id="section-ordenes" class="section hidden"><p class="proximamente">Próximamente.</p></section>
+        <section id="section-recepciones" class="section hidden"><p class="proximamente">Próximamente.</p></section>
+        <section id="section-usuarios" class="section hidden"><p class="proximamente">Próximamente.</p></section>
+      </main>
+    </div>
+  </div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
