@@ -171,7 +171,9 @@ create table ordenes_compra (
   proveedor_id uuid not null references proveedores(id) on delete restrict,
   tipo text not null check (tipo in ('carpinteria','pintura','laqueado','otro')),
   fecha_pedido date not null default current_date,
+  fecha_necesidad date,
   fecha_estimada_entrega date,
+  fecha_entrega_real date,
   estado text not null default 'pendiente' check (estado in ('pendiente','parcial','completa','cancelada')),
   notas text,
   creado_por uuid references auth.users(id),
@@ -318,35 +320,45 @@ declare
   v_total_pedido numeric;
   v_total_recibido numeric;
   v_cantidad_int int;
+  v_fecha_recepcion date;
+  v_nuevo_estado text;
 begin
-  update ordenes_compra_items
+  update public.ordenes_compra_items
   set cantidad_recibida = cantidad_recibida + new.cantidad_recibida
   where id = new.orden_compra_item_id
   returning orden_compra_id, inventario_id into v_orden_id, v_inventario_id;
 
   if v_inventario_id is not null then
     v_cantidad_int := round(new.cantidad_recibida)::int;
-    insert into unidades (inventario_id, recepcion_item_id)
+    insert into public.unidades (inventario_id, recepcion_item_id)
     select v_inventario_id, new.id
     from generate_series(1, v_cantidad_int);
   end if;
 
   select sum(cantidad_pedida), sum(cantidad_recibida)
   into v_total_pedido, v_total_recibido
-  from ordenes_compra_items
+  from public.ordenes_compra_items
   where orden_compra_id = v_orden_id;
 
-  update ordenes_compra
-  set estado = case
+  v_nuevo_estado := case
     when v_total_recibido >= v_total_pedido then 'completa'
     when v_total_recibido > 0 then 'parcial'
     else 'pendiente'
-  end
+  end;
+
+  if v_nuevo_estado = 'completa' then
+    select fecha_recepcion into v_fecha_recepcion
+    from public.recepciones where id = new.recepcion_id;
+  end if;
+
+  update public.ordenes_compra
+  set estado = v_nuevo_estado,
+      fecha_entrega_real = case when v_nuevo_estado = 'completa' then v_fecha_recepcion else fecha_entrega_real end
   where id = v_orden_id;
 
   return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = public;
 
 create trigger trg_recepcion_item_after_insert
 after insert on recepciones_items

@@ -2,9 +2,15 @@ import { supabase } from './supabaseClient.js';
 import { signInWithGoogle, signOut, checkAutorizado } from './auth.js';
 import { initProveedores } from './proveedores.js';
 import { initInventario } from './inventario.js';
+import { initStock } from './stock.js';
+import { initOrdenes } from './ordenes.js';
+import { initRecepciones } from './recepciones.js';
 
 const sectionInitializers = {
   inventario: initInventario,
+  stock: initStock,
+  ordenes: initOrdenes,
+  recepciones: initRecepciones,
 };
 
 const screens = {
