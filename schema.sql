@@ -123,7 +123,42 @@ before insert or update on proveedores
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- C. INVENTARIO
+-- C. LISTAS DE VALORES (mantenidas por el usuario desde la app)
+-- =========================================================
+create table tipos_producto (
+  id uuid primary key default gen_random_uuid(),
+  nombre text unique not null,
+  activo boolean not null default true,
+  creado_por uuid references auth.users(id),
+  creado_en timestamptz not null default now(),
+  actualizado_por uuid references auth.users(id),
+  actualizado_en timestamptz not null default now()
+);
+
+create trigger trg_who_tipos_producto
+before insert or update on tipos_producto
+for each row execute function fn_set_who_columns();
+
+create table tipos_madera (
+  id uuid primary key default gen_random_uuid(),
+  nombre text unique not null,
+  activo boolean not null default true,
+  creado_por uuid references auth.users(id),
+  creado_en timestamptz not null default now(),
+  actualizado_por uuid references auth.users(id),
+  actualizado_en timestamptz not null default now()
+);
+
+create trigger trg_who_tipos_madera
+before insert or update on tipos_madera
+for each row execute function fn_set_who_columns();
+
+-- precarga de los tipos que ya estaban sugeridos antes de tener esta tabla
+insert into tipos_producto (nombre) values ('Bancos Materos'), ('Taburetes'), ('Racks')
+on conflict (nombre) do nothing;
+
+-- =========================================================
+-- D. INVENTARIO
 -- =========================================================
 create table inventario (
   id uuid primary key default gen_random_uuid(),
@@ -132,8 +167,8 @@ create table inventario (
   tipo text,
   proveedor_id uuid references proveedores(id),
   tipo_madera text,
-  alto_cm numeric,
   largo_cm numeric,
+  alto_cm numeric,
   profundidad_cm numeric,
   diametro_cm numeric,
   peso_fisico_kg numeric,
@@ -147,6 +182,7 @@ create table inventario (
     end
   ) stored,
   color text,
+  color_detalle text,
   laqueado boolean not null default false,
   info_adicional text,
   activo boolean not null default true,
@@ -164,7 +200,7 @@ before insert or update on inventario
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- D. ORDENES DE COMPRA
+-- E. ORDENES DE COMPRA
 -- =========================================================
 create table ordenes_compra (
   id uuid primary key default gen_random_uuid(),
@@ -190,7 +226,7 @@ before insert or update on ordenes_compra
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- E. ITEMS DE LA ORDEN DE COMPRA
+-- F. ITEMS DE LA ORDEN DE COMPRA
 -- =========================================================
 create table ordenes_compra_items (
   id uuid primary key default gen_random_uuid(),
@@ -215,7 +251,7 @@ before insert or update on ordenes_compra_items
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- F. RECEPCIONES
+-- G. RECEPCIONES
 -- =========================================================
 create table recepciones (
   id uuid primary key default gen_random_uuid(),
@@ -236,7 +272,7 @@ before insert or update on recepciones
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- G. ITEMS DE LA RECEPCION
+-- H. ITEMS DE LA RECEPCION
 -- =========================================================
 create table recepciones_items (
   id uuid primary key default gen_random_uuid(),
@@ -258,7 +294,7 @@ before insert or update on recepciones_items
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- H. UNIDADES (una fila por mueble físico, con su QR)
+-- I. UNIDADES (una fila por mueble físico, con su QR)
 -- =========================================================
 create table unidades (
   id uuid primary key default gen_random_uuid(),
@@ -370,6 +406,8 @@ for each row execute function fn_recepcion_item_after_insert();
 -- =========================================================
 
 alter table proveedores enable row level security;
+alter table tipos_producto enable row level security;
+alter table tipos_madera enable row level security;
 alter table inventario enable row level security;
 alter table ordenes_compra enable row level security;
 alter table ordenes_compra_items enable row level security;
@@ -378,6 +416,10 @@ alter table recepciones_items enable row level security;
 alter table unidades enable row level security;
 
 create policy "acceso_interno" on proveedores for all to authenticated
+  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "acceso_interno" on tipos_producto for all to authenticated
+  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "acceso_interno" on tipos_madera for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on inventario for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());

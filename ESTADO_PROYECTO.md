@@ -32,8 +32,10 @@ a futuro como "DM Sol Home Apps" (paraguas para más herramientas internas).
 
 ## Modelo de datos (Postgres en Supabase)
 
-Tablas: `proveedores`, `inventario` (catálogo unificado de SKUs, sin
-separar producto/variante), `ordenes_compra`, `ordenes_compra_items`,
+Tablas: `proveedores`, `tipos_producto` y `tipos_madera` (listas de valores
+editables desde la pantalla de Configuración, usadas en los selects de
+Inventario), `inventario` (catálogo unificado de SKUs, sin separar
+producto/variante), `ordenes_compra`, `ordenes_compra_items`,
 `recepciones`, `recepciones_items`, `unidades` (una fila por mueble físico
 individual, con código QR autogenerado tipo `U-000001`), `emails_autorizados`,
 `perfiles`.
@@ -64,7 +66,6 @@ Supabase, ese archivo solo alcanza.
 - Costo de compra con historial de precios por proveedor/producto, para
   poder hacer ajustes parciales o totales.
 - Sincronización de stock con Mercado Libre (y a futuro Tiendanube).
-- Impresión de etiquetas QR para las unidades.
 
 ## Estado del frontend (pantallas)
 
@@ -74,8 +75,7 @@ Supabase, ese archivo solo alcanza.
 - ✅ Stock (vista actual + filtros + búsqueda por código QR)
 - ✅ Órdenes de compra (alta con ítems + listado + detalle)
 - ✅ Recepciones (registrar lo que llega contra una orden, total o parcial)
-- ⬜ Usuarios (ABM de la tabla `emails_autorizados` desde la app, hoy se
-  carga a mano por SQL Editor)
+- ✅ Configuración (gestión de las listas Tipos de producto y Tipos de madera; a futuro se suma ahí el ABM de usuarios autorizados)
 
 Pendiente de probar de punta a punta: crear una orden de compra, registrar
 una recepción contra ella (total o parcial) y confirmar que el stock y el

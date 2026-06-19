@@ -231,15 +231,64 @@ async function saveRecepcion(e) {
   }
 
   const itemsConRecepcion = itemsARecibir.map(it => ({ ...it, recepcion_id: recepcion.id }));
-  const { error: errItems } = await supabase.from('recepciones_items').insert(itemsConRecepcion);
+  const { data: insertedItems, error: errItems } = await supabase
+    .from('recepciones_items')
+    .insert(itemsConRecepcion)
+    .select();
 
   if (errItems) {
     alert('La recepción se creó pero hubo un error al guardar los ítems: ' + errItems.message);
   }
 
-  document.getElementById('recepcion-form-wrap').classList.add('hidden');
-  document.getElementById('recepcion-form-wrap').innerHTML = '';
+  const wrap = document.getElementById('recepcion-form-wrap');
+
+  if (insertedItems && insertedItems.length) {
+    const { data: nuevasUnidades } = await supabase
+      .from('unidades')
+      .select('codigo_qr, inventario(sku)')
+      .in('recepcion_item_id', insertedItems.map(i => i.id));
+
+    if (nuevasUnidades && nuevasUnidades.length) {
+      mostrarEtiquetas(wrap, nuevasUnidades);
+      await loadRecepciones();
+      return;
+    }
+  }
+
+  wrap.classList.add('hidden');
+  wrap.innerHTML = '';
   await loadRecepciones();
+}
+
+function mostrarEtiquetas(wrap, unidades) {
+  wrap.innerHTML = `
+    <h3>Recepción guardada</h3>
+    <p>Se generaron ${unidades.length} unidad${unidades.length === 1 ? '' : 'es'} con su código QR. Podés imprimir las etiquetas ahora o más tarde desde acá.</p>
+    <div id="etiquetas-print">
+      ${unidades.map((u, i) => `
+        <div class="etiqueta">
+          <canvas id="etq-${i}"></canvas>
+          <span>${escapeHtml(u.inventario?.sku || '-')}<br>${escapeHtml(u.codigo_qr)}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="form-actions">
+      <button type="button" id="btn-imprimir-etiquetas" class="btn btn-primary">Imprimir etiquetas</button>
+      <button type="button" id="btn-cerrar-etiquetas" class="btn btn-secondary">Cerrar</button>
+    </div>
+  `;
+
+  unidades.forEach((u, i) => {
+    QRCode.toCanvas(document.getElementById(`etq-${i}`), u.codigo_qr, { width: 110 }, (err) => {
+      if (err) console.error('Error generando QR:', err);
+    });
+  });
+
+  document.getElementById('btn-imprimir-etiquetas').addEventListener('click', () => window.print());
+  document.getElementById('btn-cerrar-etiquetas').addEventListener('click', () => {
+    wrap.classList.add('hidden');
+    wrap.innerHTML = '';
+  });
 }
 
 function formatFecha(dateStr) {

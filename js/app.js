@@ -5,12 +5,14 @@ import { initInventario } from './inventario.js';
 import { initStock } from './stock.js';
 import { initOrdenes } from './ordenes.js';
 import { initRecepciones } from './recepciones.js';
+import { initConfiguracion } from './configuracion.js';
 
 const sectionInitializers = {
   inventario: initInventario,
   stock: initStock,
   ordenes: initOrdenes,
   recepciones: initRecepciones,
+  configuracion: initConfiguracion,
 };
 
 const screens = {

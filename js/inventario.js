@@ -3,6 +3,8 @@ import { supabase } from './supabaseClient.js';
 let initialized = false;
 let cacheInventario = [];
 let cacheProveedores = [];
+let cacheTiposProducto = [];
+let cacheTiposMadera = [];
 
 export async function initInventario() {
   const section = document.getElementById('section-inventario');
@@ -30,8 +32,17 @@ export async function initInventario() {
     initialized = true;
   }
 
-  await loadProveedores();
+  await Promise.all([loadProveedores(), loadTiposListas()]);
   await loadInventario();
+}
+
+async function loadTiposListas() {
+  const [tp, tm] = await Promise.all([
+    supabase.from('tipos_producto').select('nombre').eq('activo', true).order('nombre'),
+    supabase.from('tipos_madera').select('nombre').eq('activo', true).order('nombre'),
+  ]);
+  cacheTiposProducto = tp.data || [];
+  cacheTiposMadera = tm.data || [];
 }
 
 async function loadProveedores() {
@@ -119,6 +130,17 @@ function calcularPesoVolumetrico(alto, largo, profundidad, diametro) {
   return null;
 }
 
+function buildSelectOptions(lista, valorActual) {
+  const nombres = lista.map(v => v.nombre);
+  let html = lista.map(v =>
+    `<option value="${escapeAttr(v.nombre)}" ${v.nombre === valorActual ? 'selected' : ''}>${escapeHtml(v.nombre)}</option>`
+  ).join('');
+  if (valorActual && !nombres.includes(valorActual)) {
+    html += `<option value="${escapeAttr(valorActual)}" selected>${escapeHtml(valorActual)} (inactivo)</option>`;
+  }
+  return html;
+}
+
 function openForm(item = null) {
   const wrap = document.getElementById('articulo-form-wrap');
   wrap.classList.remove('hidden');
@@ -134,12 +156,10 @@ function openForm(item = null) {
         <input name="sku" required maxlength="200" value="${escapeAttr(item?.sku || '')}">
       </label>
       <label>Tipo
-        <input name="tipo" list="tipos-sugeridos" value="${escapeAttr(item?.tipo || '')}">
-        <datalist id="tipos-sugeridos">
-          <option value="Bancos Materos">
-          <option value="Taburetes">
-          <option value="Racks">
-        </datalist>
+        <select name="tipo">
+          <option value="">- Sin definir -</option>
+          ${buildSelectOptions(cacheTiposProducto, item?.tipo)}
+        </select>
       </label>
       <label>Proveedor (carpintero)
         <select name="proveedor_id">
@@ -148,10 +168,13 @@ function openForm(item = null) {
         </select>
       </label>
       <label>Tipo de madera
-        <input name="tipo_madera" value="${escapeAttr(item?.tipo_madera || '')}">
+        <select name="tipo_madera">
+          <option value="">- Sin definir -</option>
+          ${buildSelectOptions(cacheTiposMadera, item?.tipo_madera)}
+        </select>
       </label>
       <label>Color
-        <select name="color">
+        <select name="color" id="color-select">
           <option value="">- Sin definir -</option>
           <option value="natural" ${item?.color === 'natural' ? 'selected' : ''}>Natural</option>
           <option value="estandar" ${item?.color === 'estandar' ? 'selected' : ''}>Estándar</option>
@@ -159,15 +182,18 @@ function openForm(item = null) {
           <option value="otro" ${item?.color === 'otro' ? 'selected' : ''}>Otro</option>
         </select>
       </label>
+      <label id="color-detalle-wrap" class="${item?.color === 'otro' ? '' : 'hidden'}">Detalle del color
+        <input name="color_detalle" value="${escapeAttr(item?.color_detalle || '')}">
+      </label>
       <label class="checkbox" style="flex-direction: row; align-items: center;">
         <input type="checkbox" name="laqueado" ${item?.laqueado ? 'checked' : ''}> Laqueado
       </label>
 
-      <label>Alto (cm)
-        <input name="alto_cm" type="number" step="0.1" min="0" value="${item?.alto_cm ?? ''}">
-      </label>
       <label>Largo (cm)
         <input name="largo_cm" type="number" step="0.1" min="0" value="${item?.largo_cm ?? ''}">
+      </label>
+      <label>Alto (cm)
+        <input name="alto_cm" type="number" step="0.1" min="0" value="${item?.alto_cm ?? ''}">
       </label>
       <label>Profundidad (cm)
         <input name="profundidad_cm" type="number" step="0.1" min="0" value="${item?.profundidad_cm ?? ''}">
@@ -210,6 +236,10 @@ function openForm(item = null) {
     });
   });
 
+  document.getElementById('color-select').addEventListener('change', (e) => {
+    document.getElementById('color-detalle-wrap').classList.toggle('hidden', e.target.value !== 'otro');
+  });
+
   document.getElementById('btn-cancelar-form').addEventListener('click', () => {
     wrap.classList.add('hidden');
     wrap.innerHTML = '';
@@ -230,6 +260,7 @@ async function saveArticulo(e, id) {
     proveedor_id: fd.get('proveedor_id') || null,
     tipo_madera: fd.get('tipo_madera') || null,
     color: fd.get('color') || null,
+    color_detalle: fd.get('color') === 'otro' ? (fd.get('color_detalle') || null) : null,
     laqueado: fd.get('laqueado') === 'on',
     alto_cm: num(fd.get('alto_cm')),
     largo_cm: num(fd.get('largo_cm')),
