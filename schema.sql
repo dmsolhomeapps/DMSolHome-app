@@ -54,8 +54,46 @@ create trigger trg_on_auth_user_created
 after insert on auth.users
 for each row execute function fn_handle_new_user();
 
+-- Roles (lista editable) y asignación de roles a perfiles
+create table roles (
+  id uuid primary key default gen_random_uuid(),
+  nombre text unique not null,
+  descripcion text,
+  activo boolean not null default true,
+  creado_por uuid references auth.users(id),
+  creado_en timestamptz not null default now(),
+  actualizado_por uuid references auth.users(id),
+  actualizado_en timestamptz not null default now()
+);
+
+create trigger trg_who_roles
+before insert or update on roles
+for each row execute function fn_set_who_columns();
+
+insert into roles (nombre, descripcion) values
+  ('Editor de órdenes', 'Puede modificar órdenes de compra ya creadas'),
+  ('Supervisor de compras', 'Recibe los avisos de órdenes próximas a vencer');
+
+create table perfiles_roles (
+  perfil_id uuid not null references perfiles(id) on delete cascade,
+  rol_id uuid not null references roles(id) on delete cascade,
+  primary key (perfil_id, rol_id)
+);
+
+create or replace function fn_tiene_rol(p_rol_nombre text)
+returns boolean as $$
+  select exists (
+    select 1
+    from public.perfiles_roles pr
+    join public.roles r on r.id = pr.rol_id
+    where pr.perfil_id = auth.uid() and r.nombre = p_rol_nombre and r.activo
+  );
+$$ language sql security definer stable set search_path = public;
+
 alter table emails_autorizados enable row level security;
 alter table perfiles enable row level security;
+alter table roles enable row level security;
+alter table perfiles_roles enable row level security;
 
 create policy "lectura_interna" on emails_autorizados for select to authenticated using (true);
 create policy "lectura_perfiles" on perfiles for select to authenticated using (true);
@@ -210,6 +248,7 @@ create table ordenes_compra (
   fecha_necesidad date,
   fecha_estimada_entrega date,
   fecha_entrega_real date,
+  dias_aviso integer,
   estado text not null default 'pendiente' check (estado in ('pendiente','parcial','completa','cancelada')),
   notas text,
   creado_por uuid references auth.users(id),
@@ -294,42 +333,35 @@ before insert or update on recepciones_items
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- I. UNIDADES (una fila por mueble físico, con su QR)
+-- I. MOVIMIENTOS DE STOCK (entradas/salidas por cantidad, no por pieza)
 -- =========================================================
-create table unidades (
+create table movimientos_stock (
   id uuid primary key default gen_random_uuid(),
-  numero bigint generated always as identity,
-  codigo_qr text generated always as ('U-' || lpad(numero::text, 6, '0')) stored,
   inventario_id uuid not null references inventario(id),
-  recepcion_item_id uuid references recepciones_items(id),
-  fecha_ingreso timestamptz not null default now(),
-  pintado boolean not null default false,
-  proveedor_pintor_id uuid references proveedores(id),
-  fecha_pintado timestamptz,
-  laqueado boolean not null default false,
-  fecha_laqueado timestamptz,
-  estado text not null default 'en_stock' check (estado in (
-    'en_stock','en_pintura','en_laqueado','vendido','reservado','danado','baja'
+  tipo text not null check (tipo in (
+    'ingreso_compra','egreso_venta','ajuste_positivo','ajuste_negativo',
+    'ingreso_laqueado','egreso_laqueado'
   )),
-  fecha_venta timestamptz,
+  cantidad numeric not null check (cantidad > 0),
+  referencia_tipo text,
+  referencia_id uuid,
+  fecha timestamptz not null default now(),
   notas text,
   creado_por uuid references auth.users(id),
   creado_en timestamptz not null default now(),
   actualizado_por uuid references auth.users(id),
-  actualizado_en timestamptz not null default now(),
-  unique (numero)
+  actualizado_en timestamptz not null default now()
 );
 
-create unique index idx_unidades_codigo_qr on unidades(codigo_qr);
-create index idx_unidades_inventario on unidades(inventario_id);
-create index idx_unidades_estado on unidades(estado);
+create index idx_mov_inventario on movimientos_stock(inventario_id);
+create index idx_mov_fecha on movimientos_stock(fecha);
 
-create trigger trg_who_unidades
-before insert or update on unidades
+create trigger trg_who_movimientos_stock
+before insert or update on movimientos_stock
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- VISTA: stock actual = unidades en estado "en_stock" por SKU
+-- VISTA: stock actual por cantidades (total y laqueado) por SKU
 -- =========================================================
 create view stock_actual
 with (security_invoker = true) as
@@ -340,13 +372,23 @@ select
   i.tipo,
   i.color,
   i.laqueado,
-  count(u.id) filter (where u.estado = 'en_stock') as stock
+  coalesce(sum(case
+    when m.tipo in ('ingreso_compra','ajuste_positivo') then m.cantidad
+    when m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
+    else 0
+  end), 0) as stock_total,
+  coalesce(sum(case
+    when m.tipo = 'ingreso_laqueado' then m.cantidad
+    when m.tipo = 'egreso_laqueado' then -m.cantidad
+    else 0
+  end), 0) as stock_laqueado
 from inventario i
-left join unidades u on u.inventario_id = i.id
+left join movimientos_stock m on m.inventario_id = i.id
 group by i.id, i.sku, i.descripcion, i.tipo, i.color, i.laqueado;
 
 -- =========================================================
--- TRIGGER: recepción de items -> genera unidades + recalcula estado OC
+-- TRIGGER: recepción de items -> registra ingreso en movimientos_stock
+-- y recalcula estado/fecha de entrega real de la OC
 -- =========================================================
 create or replace function fn_recepcion_item_after_insert()
 returns trigger as $$
@@ -355,7 +397,6 @@ declare
   v_inventario_id uuid;
   v_total_pedido numeric;
   v_total_recibido numeric;
-  v_cantidad_int int;
   v_fecha_recepcion date;
   v_nuevo_estado text;
 begin
@@ -365,10 +406,8 @@ begin
   returning orden_compra_id, inventario_id into v_orden_id, v_inventario_id;
 
   if v_inventario_id is not null then
-    v_cantidad_int := round(new.cantidad_recibida)::int;
-    insert into public.unidades (inventario_id, recepcion_item_id)
-    select v_inventario_id, new.id
-    from generate_series(1, v_cantidad_int);
+    insert into public.movimientos_stock (inventario_id, tipo, cantidad, referencia_tipo, referencia_id)
+    values (v_inventario_id, 'ingreso_compra', new.cantidad_recibida, 'recepcion', new.id);
   end if;
 
   select sum(cantidad_pedida), sum(cantidad_recibida)
@@ -401,6 +440,61 @@ after insert on recepciones_items
 for each row execute function fn_recepcion_item_after_insert();
 
 -- =========================================================
+-- FUNCIÓN: recibir un producto escaneado, repartiendo por antigüedad
+-- entre todas las órdenes abiertas que tengan ese producto pendiente
+-- =========================================================
+create or replace function fn_recibir_producto(
+  p_inventario_id uuid,
+  p_cantidad numeric,
+  p_fecha_recepcion date default current_date,
+  p_notas text default null
+) returns table(orden_compra_id uuid, cantidad_asignada numeric) as $$
+declare
+  v_restante numeric := p_cantidad;
+  v_item record;
+  v_recepcion_id uuid;
+  v_asignar numeric;
+begin
+  for v_item in
+    select oci.id as oci_id, oci.orden_compra_id,
+           (oci.cantidad_pedida - oci.cantidad_recibida) as pendiente, oc.proveedor_id
+    from public.ordenes_compra_items oci
+    join public.ordenes_compra oc on oc.id = oci.orden_compra_id
+    where oci.inventario_id = p_inventario_id
+      and oc.estado in ('pendiente','parcial')
+      and oci.cantidad_pedida > oci.cantidad_recibida
+    order by oc.fecha_pedido asc
+  loop
+    exit when v_restante <= 0;
+    v_asignar := least(v_restante, v_item.pendiente);
+    if v_asignar > 0 then
+      insert into public.recepciones (orden_compra_id, proveedor_id, fecha_recepcion, notas)
+      values (v_item.orden_compra_id, v_item.proveedor_id, p_fecha_recepcion, p_notas)
+      returning id into v_recepcion_id;
+
+      insert into public.recepciones_items (recepcion_id, orden_compra_item_id, cantidad_recibida)
+      values (v_recepcion_id, v_item.oci_id, v_asignar);
+
+      orden_compra_id := v_item.orden_compra_id;
+      cantidad_asignada := v_asignar;
+      return next;
+
+      v_restante := v_restante - v_asignar;
+    end if;
+  end loop;
+
+  if v_restante > 0 then
+    insert into public.movimientos_stock (inventario_id, tipo, cantidad, referencia_tipo, notas)
+    values (p_inventario_id, 'ingreso_compra', v_restante, 'recepcion_sin_orden', p_notas);
+
+    orden_compra_id := null;
+    cantidad_asignada := v_restante;
+    return next;
+  end if;
+end;
+$$ language plpgsql set search_path = public;
+
+-- =========================================================
 -- SEGURIDAD: RLS basado en la allowlist de emails_autorizados
 -- (no alcanza con "estar logueado" - además hay que estar en la lista)
 -- =========================================================
@@ -413,7 +507,7 @@ alter table ordenes_compra enable row level security;
 alter table ordenes_compra_items enable row level security;
 alter table recepciones enable row level security;
 alter table recepciones_items enable row level security;
-alter table unidades enable row level security;
+alter table movimientos_stock enable row level security;
 
 create policy "acceso_interno" on proveedores for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
@@ -423,17 +517,32 @@ create policy "acceso_interno" on tipos_madera for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on inventario for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on ordenes_compra for all to authenticated
+create policy "acceso_interno" on roles for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "acceso_interno" on perfiles_roles for all to authenticated
+  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+
+create policy "ordenes_lectura" on ordenes_compra for select to authenticated
+  using (fn_usuario_autorizado());
+create policy "ordenes_alta" on ordenes_compra for insert to authenticated
+  with check (fn_usuario_autorizado());
+create policy "ordenes_baja" on ordenes_compra for delete to authenticated
+  using (fn_usuario_autorizado());
+create policy "ordenes_edicion_restringida" on ordenes_compra for update to authenticated
+  using (fn_usuario_autorizado() and fn_tiene_rol('Editor de órdenes'))
+  with check (fn_usuario_autorizado() and fn_tiene_rol('Editor de órdenes'));
+
 create policy "acceso_interno" on ordenes_compra_items for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on recepciones for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on recepciones_items for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on unidades for all to authenticated
+create policy "acceso_interno" on movimientos_stock for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 
 grant all on all tables in schema public to authenticated;
 grant select on stock_actual to authenticated;
+grant execute on function fn_recibir_producto(uuid, numeric, date, text) to authenticated;
+grant execute on function fn_tiene_rol(text) to authenticated;
 alter default privileges in schema public grant all on tables to authenticated;

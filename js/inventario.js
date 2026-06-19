@@ -16,12 +16,23 @@ export async function initInventario() {
         <button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>
       </div>
       <div id="articulo-form-wrap" class="form-card hidden"></div>
+      <div class="form-card">
+        <div class="form-grid">
+          <label>Tipo de producto
+            <select id="filtro-tipo-inv"><option value="">Todos</option></select>
+          </label>
+          <label>Buscar por SKU
+            <input id="filtro-sku-inv" placeholder="ej: BM-001">
+          </label>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
             <tr>
               <th>SKU</th><th>Tipo</th><th>Proveedor</th><th>Color</th>
-              <th>Laqueado</th><th>Peso vol. (kg)</th><th>Estado</th><th></th>
+              <th>Laqueado</th><th>Medidas (L×A×P cm)</th><th>Peso físico (kg)</th>
+              <th>Estado</th><th></th>
             </tr>
           </thead>
           <tbody id="inventario-tbody"></tbody>
@@ -29,6 +40,8 @@ export async function initInventario() {
       </div>
     `;
     document.getElementById('btn-nuevo-articulo').addEventListener('click', () => openForm());
+    document.getElementById('filtro-tipo-inv').addEventListener('change', renderTabla);
+    document.getElementById('filtro-sku-inv').addEventListener('input', renderTabla);
     initialized = true;
   }
 
@@ -63,7 +76,7 @@ async function loadProveedores() {
 
 async function loadInventario() {
   const tbody = document.getElementById('inventario-tbody');
-  tbody.innerHTML = '<tr><td colspan="8">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9">Cargando...</td></tr>';
 
   const { data, error } = await supabase
     .from('inventario')
@@ -71,25 +84,49 @@ async function loadInventario() {
     .order('sku');
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="8">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
     return;
   }
 
   cacheInventario = data || [];
+  poblarFiltroTipo();
+  renderTabla();
+}
 
-  if (!cacheInventario.length) {
-    tbody.innerHTML = '<tr><td colspan="8">Todavía no hay artículos cargados.</td></tr>';
+function poblarFiltroTipo() {
+  const select = document.getElementById('filtro-tipo-inv');
+  const tipos = [...new Set(cacheInventario.map(i => i.tipo).filter(Boolean))].sort();
+  const actual = select.value;
+  select.innerHTML = '<option value="">Todos</option>' +
+    tipos.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
+  select.value = actual;
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('inventario-tbody');
+  const tipo = document.getElementById('filtro-tipo-inv').value;
+  const sku = document.getElementById('filtro-sku-inv').value.trim().toLowerCase();
+
+  const filtrados = cacheInventario.filter(item => {
+    if (tipo && item.tipo !== tipo) return false;
+    if (sku && !item.sku.toLowerCase().includes(sku)) return false;
+    return true;
+  });
+
+  if (!filtrados.length) {
+    tbody.innerHTML = '<tr><td colspan="9">No hay artículos que coincidan con el filtro.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = cacheInventario.map(item => `
+  tbody.innerHTML = filtrados.map(item => `
     <tr>
       <td>${escapeHtml(item.sku)}</td>
       <td>${escapeHtml(item.tipo || '-')}</td>
       <td>${escapeHtml(item.proveedores?.nombre || '-')}</td>
       <td>${colorLabel(item.color)}</td>
       <td>${item.laqueado ? 'Sí' : 'No'}</td>
-      <td>${item.peso_volumetrico_kg ?? '-'}</td>
+      <td>${formatMedidas(item)}</td>
+      <td>${item.peso_fisico_kg ?? '-'}</td>
       <td>${item.activo
         ? '<span class="badge badge-ok">Activo</span>'
         : '<span class="badge badge-off">Inactivo</span>'}</td>
@@ -113,6 +150,15 @@ async function loadInventario() {
       toggleActivo(btn.dataset.toggle, btn.dataset.activo === 'true')
     )
   );
+}
+
+function formatMedidas(item) {
+  if (item.diametro_cm && item.alto_cm) {
+    return `Ø${item.diametro_cm} × ${item.alto_cm}`;
+  }
+  const partes = [item.largo_cm, item.alto_cm, item.profundidad_cm];
+  if (partes.every(p => p === null || p === undefined)) return '-';
+  return partes.map(p => p ?? '?').join(' × ');
 }
 
 function colorLabel(color) {

@@ -5,6 +5,7 @@ let cacheOrdenes = [];
 let cacheProveedores = [];
 let cacheInventario = [];
 let itemRowCount = 0;
+let puedeEditarOrdenes = false;
 
 export async function initOrdenes() {
   const section = document.getElementById('section-ordenes');
@@ -15,6 +16,7 @@ export async function initOrdenes() {
         <h2>Órdenes de compra</h2>
         <button id="btn-nueva-oc" class="btn btn-primary">+ Nueva orden</button>
       </div>
+      <div id="oc-alertas-wrap"></div>
       <div id="oc-form-wrap" class="form-card hidden"></div>
       <div id="oc-detail-wrap" class="form-card hidden"></div>
       <div class="table-wrap">
@@ -30,8 +32,13 @@ export async function initOrdenes() {
     initialized = true;
   }
 
-  await Promise.all([loadProveedores(), loadInventario()]);
+  await Promise.all([loadProveedores(), loadInventario(), cargarPermiso()]);
   await loadOrdenes();
+}
+
+async function cargarPermiso() {
+  const { data, error } = await supabase.rpc('fn_tiene_rol', { p_rol_nombre: 'Editor de órdenes' });
+  puedeEditarOrdenes = !error && data === true;
 }
 
 async function loadProveedores() {
@@ -67,6 +74,7 @@ async function loadOrdenes() {
   }
 
   cacheOrdenes = data || [];
+  renderAlertas();
 
   if (!cacheOrdenes.length) {
     tbody.innerHTML = '<tr><td colspan="6">Todavía no hay órdenes de compra.</td></tr>';
@@ -80,13 +88,57 @@ async function loadOrdenes() {
       <td>${formatFecha(oc.fecha_pedido)}</td>
       <td>${formatFecha(oc.fecha_necesidad)}</td>
       <td>${estadoOcBadge(oc.estado)}</td>
-      <td><button class="btn btn-text btn-sm" data-ver="${oc.id}">Ver detalle</button></td>
+      <td>
+        <button class="btn btn-text btn-sm" data-ver="${oc.id}">Ver detalle</button>
+        ${puedeEditarOrdenes ? `<button class="btn btn-text btn-sm" data-editar="${oc.id}">Editar</button>` : ''}
+      </td>
     </tr>
   `).join('');
 
   tbody.querySelectorAll('[data-ver]').forEach(btn =>
     btn.addEventListener('click', () => verDetalle(btn.dataset.ver))
   );
+  tbody.querySelectorAll('[data-editar]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const oc = cacheOrdenes.find(o => o.id === btn.dataset.editar);
+      openForm(oc);
+    })
+  );
+}
+
+function renderAlertas() {
+  const wrap = document.getElementById('oc-alertas-wrap');
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  const alertas = cacheOrdenes.filter(oc => {
+    if (['completa', 'cancelada'].includes(oc.estado)) return false;
+    if (!oc.fecha_necesidad || oc.dias_aviso === null || oc.dias_aviso === undefined) return false;
+    const limite = new Date(oc.fecha_necesidad + 'T00:00:00');
+    limite.setDate(limite.getDate() - oc.dias_aviso);
+    return hoy >= limite;
+  });
+
+  if (!alertas.length) {
+    wrap.innerHTML = '';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="form-card alerta-card">
+      <h3>Órdenes que necesitan atención</h3>
+      <ul>
+        ${alertas.map(oc => {
+          const necesidad = new Date(oc.fecha_necesidad + 'T00:00:00');
+          const diasRestantes = Math.round((necesidad - hoy) / 86400000);
+          const texto = diasRestantes >= 0
+            ? `faltan ${diasRestantes} día${diasRestantes === 1 ? '' : 's'} para la fecha de necesidad`
+            : `la fecha de necesidad pasó hace ${Math.abs(diasRestantes)} día${Math.abs(diasRestantes) === 1 ? '' : 's'}`;
+          return `<li>${escapeHtml(oc.proveedores?.nombre || '-')} - ${tipoOcLabel(oc.tipo)} (${estadoOcBadge(oc.estado)}): ${texto}</li>`;
+        }).join('')}
+      </ul>
+    </div>
+  `;
 }
 
 function tipoOcLabel(tipo) {
@@ -110,18 +162,19 @@ function estadoOcBadge(estado) {
   return `<span class="badge ${cls}">${label}</span>`;
 }
 
-function openForm() {
+function openForm(item = null) {
   const wrap = document.getElementById('oc-form-wrap');
   document.getElementById('oc-detail-wrap').classList.add('hidden');
   wrap.classList.remove('hidden');
   itemRowCount = 0;
+  const esEdicion = !!item;
 
   const proveedorOptions = cacheProveedores.map(p =>
-    `<option value="${p.id}">${escapeHtml(p.nombre)} (${tipoProvLabel(p.tipo)})</option>`
+    `<option value="${p.id}" ${item?.proveedor_id === p.id ? 'selected' : ''}>${escapeHtml(p.nombre)} (${tipoProvLabel(p.tipo)})</option>`
   ).join('');
 
   wrap.innerHTML = `
-    <h3>Nueva orden de compra</h3>
+    <h3>${esEdicion ? 'Editar orden de compra' : 'Nueva orden de compra'}</h3>
     <form id="oc-form" class="form-grid">
       <label>Proveedor *
         <select name="proveedor_id" required>
@@ -131,30 +184,35 @@ function openForm() {
       </label>
       <label>Tipo *
         <select name="tipo" required>
-          <option value="carpinteria">Carpintería</option>
-          <option value="pintura">Pintura</option>
-          <option value="laqueado">Laqueado</option>
-          <option value="otro">Otro</option>
+          <option value="carpinteria" ${item?.tipo === 'carpinteria' ? 'selected' : ''}>Carpintería</option>
+          <option value="pintura" ${item?.tipo === 'pintura' ? 'selected' : ''}>Pintura</option>
+          <option value="laqueado" ${item?.tipo === 'laqueado' ? 'selected' : ''}>Laqueado</option>
+          <option value="otro" ${item?.tipo === 'otro' ? 'selected' : ''}>Otro</option>
         </select>
       </label>
       <label>Fecha de pedido
-        <input name="fecha_pedido" type="date" value="${new Date().toISOString().slice(0, 10)}">
+        <input name="fecha_pedido" type="date" value="${item?.fecha_pedido || new Date().toISOString().slice(0, 10)}">
       </label>
-      <label>Fecha de necesidad
-        <input name="fecha_necesidad" type="date">
+      <label>Fecha de necesidad <span class="ts">- Fecha en que se necesita entregar al cliente</span>
+        <input name="fecha_necesidad" type="date" value="${item?.fecha_necesidad || ''}">
       </label>
-      <label>Fecha estimada de entrega
-        <input name="fecha_estimada_entrega" type="date">
+      <label>Fecha estimada de entrega <span class="ts">- Fecha comprometida por el proveedor para entregar el producto</span>
+        <input name="fecha_estimada_entrega" type="date" value="${item?.fecha_estimada_entrega || ''}">
+      </label>
+      <label>Avisar cuando falten <span class="ts">- días antes de la fecha de necesidad, si todavía no está recibida</span>
+        <input name="dias_aviso" type="number" min="0" step="1" value="${item?.dias_aviso ?? ''}">
       </label>
       <label class="full">Notas
-        <textarea name="notas"></textarea>
+        <textarea name="notas">${escapeHtml(item?.notas || '')}</textarea>
       </label>
 
+      ${esEdicion ? '' : `
       <div class="full">
         <h3 style="margin-top:1rem">Ítems</h3>
         <div id="oc-items-rows"></div>
         <button type="button" id="btn-agregar-item" class="btn btn-secondary btn-sm">+ Agregar ítem</button>
       </div>
+      `}
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Guardar orden</button>
@@ -163,14 +221,16 @@ function openForm() {
     </form>
   `;
 
-  document.getElementById('btn-agregar-item').addEventListener('click', () => agregarItemRow());
-  agregarItemRow();
+  if (!esEdicion) {
+    document.getElementById('btn-agregar-item').addEventListener('click', () => agregarItemRow());
+    agregarItemRow();
+  }
 
   document.getElementById('btn-cancelar-oc').addEventListener('click', () => {
     wrap.classList.add('hidden');
     wrap.innerHTML = '';
   });
-  document.getElementById('oc-form').addEventListener('submit', saveOrden);
+  document.getElementById('oc-form').addEventListener('submit', (e) => saveOrden(e, item?.id));
 }
 
 function agregarItemRow() {
@@ -214,50 +274,71 @@ function agregarItemRow() {
   row.querySelector(`[data-quitar-row="${id}"]`).addEventListener('click', () => row.remove());
 }
 
-async function saveOrden(e) {
+async function saveOrden(e, id) {
   e.preventDefault();
   const form = e.target;
   const fd = new FormData(form);
 
-  const rows = document.querySelectorAll('#oc-items-rows .oc-item-row');
-  if (!rows.length) {
-    alert('Agregá al menos un ítem a la orden.');
-    return;
-  }
-
-  const items = [];
-  for (const row of rows) {
-    const id = row.dataset.rowId;
-    const cantidad = parseFloat(fd.get(`item-cantidad-${id}`));
-    if (!cantidad || cantidad <= 0) continue;
-    items.push({
-      inventario_id: fd.get(`item-inventario-${id}`) || null,
-      descripcion_personalizada: fd.get(`item-desc-${id}`) || null,
-      cantidad_pedida: cantidad,
-      costo_unitario: fd.get(`item-costo-${id}`) ? parseFloat(fd.get(`item-costo-${id}`)) : null,
-      notas: fd.get(`item-notas-${id}`) || null,
-    });
-  }
-
-  if (!items.length) {
-    alert('Agregá al menos un ítem con una cantidad válida.');
-    return;
-  }
+  const payloadHeader = {
+    proveedor_id: fd.get('proveedor_id'),
+    tipo: fd.get('tipo'),
+    fecha_pedido: fd.get('fecha_pedido') || null,
+    fecha_necesidad: fd.get('fecha_necesidad') || null,
+    fecha_estimada_entrega: fd.get('fecha_estimada_entrega') || null,
+    dias_aviso: fd.get('dias_aviso') ? parseInt(fd.get('dias_aviso'), 10) : null,
+    notas: fd.get('notas') || null,
+  };
 
   const submitBtn = form.querySelector('button[type="submit"]');
   submitBtn.disabled = true;
   submitBtn.textContent = 'Guardando...';
 
+  if (id) {
+    const { error } = await supabase.from('ordenes_compra').update(payloadHeader).eq('id', id);
+    if (error) {
+      alert('No se pudo guardar: ' + error.message);
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Guardar orden';
+      return;
+    }
+    document.getElementById('oc-form-wrap').classList.add('hidden');
+    document.getElementById('oc-form-wrap').innerHTML = '';
+    await loadOrdenes();
+    return;
+  }
+
+  const rows = document.querySelectorAll('#oc-items-rows .oc-item-row');
+  if (!rows.length) {
+    alert('Agregá al menos un ítem a la orden.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Guardar orden';
+    return;
+  }
+
+  const items = [];
+  for (const row of rows) {
+    const rowId = row.dataset.rowId;
+    const cantidad = parseFloat(fd.get(`item-cantidad-${rowId}`));
+    if (!cantidad || cantidad <= 0) continue;
+    items.push({
+      inventario_id: fd.get(`item-inventario-${rowId}`) || null,
+      descripcion_personalizada: fd.get(`item-desc-${rowId}`) || null,
+      cantidad_pedida: cantidad,
+      costo_unitario: fd.get(`item-costo-${rowId}`) ? parseFloat(fd.get(`item-costo-${rowId}`)) : null,
+      notas: fd.get(`item-notas-${rowId}`) || null,
+    });
+  }
+
+  if (!items.length) {
+    alert('Agregá al menos un ítem con una cantidad válida.');
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Guardar orden';
+    return;
+  }
+
   const { data: oc, error: errOc } = await supabase
     .from('ordenes_compra')
-    .insert({
-      proveedor_id: fd.get('proveedor_id'),
-      tipo: fd.get('tipo'),
-      fecha_pedido: fd.get('fecha_pedido') || null,
-      fecha_necesidad: fd.get('fecha_necesidad') || null,
-      fecha_estimada_entrega: fd.get('fecha_estimada_entrega') || null,
-      notas: fd.get('notas') || null,
-    })
+    .insert(payloadHeader)
     .select()
     .single();
 
@@ -301,7 +382,10 @@ async function verDetalle(ocId) {
   wrap.innerHTML = `
     <div class="section-header">
       <h3>Orden a ${escapeHtml(oc?.proveedores?.nombre || '-')} - ${tipoOcLabel(oc?.tipo)}</h3>
-      <button type="button" id="btn-cerrar-detalle" class="btn btn-secondary btn-sm">Cerrar</button>
+      <div>
+        ${puedeEditarOrdenes ? `<button type="button" id="btn-editar-detalle" class="btn btn-secondary btn-sm">Editar</button>` : ''}
+        <button type="button" id="btn-cerrar-detalle" class="btn btn-secondary btn-sm">Cerrar</button>
+      </div>
     </div>
     <p>
       Pedido: ${formatFecha(oc?.fecha_pedido)} ·
@@ -309,7 +393,7 @@ async function verDetalle(ocId) {
       Entrega estimada: ${formatFecha(oc?.fecha_estimada_entrega)} ·
       Entrega real: ${formatFecha(oc?.fecha_entrega_real)}
     </p>
-    <p>Estado: ${estadoOcBadge(oc?.estado)}</p>
+    <p>Estado: ${estadoOcBadge(oc?.estado)} ${oc?.dias_aviso != null ? `· Avisar con ${oc.dias_aviso} días de anticipación` : ''}</p>
     ${oc?.notas ? `<p>Notas: ${escapeHtml(oc.notas)}</p>` : ''}
     <table class="data-table">
       <thead>
@@ -328,6 +412,14 @@ async function verDetalle(ocId) {
       </tbody>
     </table>
   `;
+
+  if (puedeEditarOrdenes) {
+    document.getElementById('btn-editar-detalle').addEventListener('click', () => {
+      wrap.classList.add('hidden');
+      wrap.innerHTML = '';
+      openForm(oc);
+    });
+  }
 
   document.getElementById('btn-cerrar-detalle').addEventListener('click', () => {
     wrap.classList.add('hidden');

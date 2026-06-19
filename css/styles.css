@@ -59,6 +59,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .form-card h3 { margin-top: 0; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .form-grid label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.85rem; color: var(--text-muted); }
+.form-grid label .ts { font-size: 0.78rem; font-weight: 400; color: var(--text-muted); opacity: 0.85; }
 .form-grid input, .form-grid select, .form-grid textarea {
   font-family: inherit; padding: 0.5rem 0.6rem; border: 1px solid var(--border);
   border-radius: 6px; font-size: 0.95rem; color: var(--text); background: #fff;
@@ -70,7 +71,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .checkbox { flex-direction: row !important; align-items: center; gap: 0.4rem !important; }
 .form-actions { grid-column: 1 / -1; display: flex; gap: 0.75rem; margin-top: 0.5rem; }
 
-.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.table-wrap { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .data-table th, .data-table td { padding: 0.7rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
 .data-table th { background: var(--bg); color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -87,8 +88,19 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .qr-result-layout { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
 .qr-result-layout p { margin: 0.2rem 0; }
 
+.input-edicion { font-family: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; width: 100%; }
+
+.alerta-card { border-left: 4px solid #C9882C; background: #FBF1D2; }
+.alerta-card h3 { margin-top: 0; }
+.alerta-card ul { margin: 0; padding-left: 1.2rem; }
+.alerta-card li { margin-bottom: 0.3rem; }
+
 .etiqueta { display: inline-flex; flex-direction: column; align-items: center; gap: 0.3rem; border: 1px dashed var(--border); border-radius: 6px; padding: 0.6rem; margin: 0.4rem; }
 .etiqueta span { font-size: 0.8rem; text-align: center; }
+
+.qr-inline { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; margin-top: 0.5rem; font-size: 0.78rem; }
+.laqueado-inline { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.5rem; }
+.laqueado-inline input { font-family: inherit; padding: 0.3rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; }
 
 @media print {
   body * { visibility: hidden; }
