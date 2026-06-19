@@ -3,6 +3,8 @@ import { supabase } from './supabaseClient.js';
 let initialized = false;
 let cacheInventario = [];
 let cacheProveedores = [];
+let cacheTiposProducto = [];
+let cacheTiposMadera = [];
 
 export async function initInventario() {
   const section = document.getElementById('section-inventario');
@@ -14,12 +16,23 @@ export async function initInventario() {
         <button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>
       </div>
       <div id="articulo-form-wrap" class="form-card hidden"></div>
+      <div class="form-card">
+        <div class="form-grid">
+          <label>Tipo de producto
+            <select id="filtro-tipo-inv"><option value="">Todos</option></select>
+          </label>
+          <label>Buscar por SKU
+            <input id="filtro-sku-inv" placeholder="ej: BM-001">
+          </label>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
             <tr>
               <th>SKU</th><th>Tipo</th><th>Proveedor</th><th>Color</th>
-              <th>Laqueado</th><th>Peso vol. (kg)</th><th>Estado</th><th></th>
+              <th>Laqueado</th><th>Medidas (L×A×P cm)</th><th>Peso físico (kg)</th>
+              <th>Estado</th><th></th>
             </tr>
           </thead>
           <tbody id="inventario-tbody"></tbody>
@@ -27,11 +40,22 @@ export async function initInventario() {
       </div>
     `;
     document.getElementById('btn-nuevo-articulo').addEventListener('click', () => openForm());
+    document.getElementById('filtro-tipo-inv').addEventListener('change', renderTabla);
+    document.getElementById('filtro-sku-inv').addEventListener('input', renderTabla);
     initialized = true;
   }
 
-  await loadProveedores();
+  await Promise.all([loadProveedores(), loadTiposListas()]);
   await loadInventario();
+}
+
+async function loadTiposListas() {
+  const [tp, tm] = await Promise.all([
+    supabase.from('tipos_producto').select('nombre').eq('activo', true).order('nombre'),
+    supabase.from('tipos_madera').select('nombre').eq('activo', true).order('nombre'),
+  ]);
+  cacheTiposProducto = tp.data || [];
+  cacheTiposMadera = tm.data || [];
 }
 
 async function loadProveedores() {
@@ -52,7 +76,7 @@ async function loadProveedores() {
 
 async function loadInventario() {
   const tbody = document.getElementById('inventario-tbody');
-  tbody.innerHTML = '<tr><td colspan="8">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="9">Cargando...</td></tr>';
 
   const { data, error } = await supabase
     .from('inventario')
@@ -60,25 +84,49 @@ async function loadInventario() {
     .order('sku');
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="8">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
     return;
   }
 
   cacheInventario = data || [];
+  poblarFiltroTipo();
+  renderTabla();
+}
 
-  if (!cacheInventario.length) {
-    tbody.innerHTML = '<tr><td colspan="8">Todavía no hay artículos cargados.</td></tr>';
+function poblarFiltroTipo() {
+  const select = document.getElementById('filtro-tipo-inv');
+  const tipos = [...new Set(cacheInventario.map(i => i.tipo).filter(Boolean))].sort();
+  const actual = select.value;
+  select.innerHTML = '<option value="">Todos</option>' +
+    tipos.map(t => `<option value="${escapeAttr(t)}">${escapeHtml(t)}</option>`).join('');
+  select.value = actual;
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('inventario-tbody');
+  const tipo = document.getElementById('filtro-tipo-inv').value;
+  const sku = document.getElementById('filtro-sku-inv').value.trim().toLowerCase();
+
+  const filtrados = cacheInventario.filter(item => {
+    if (tipo && item.tipo !== tipo) return false;
+    if (sku && !item.sku.toLowerCase().includes(sku)) return false;
+    return true;
+  });
+
+  if (!filtrados.length) {
+    tbody.innerHTML = '<tr><td colspan="9">No hay artículos que coincidan con el filtro.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = cacheInventario.map(item => `
+  tbody.innerHTML = filtrados.map(item => `
     <tr>
       <td>${escapeHtml(item.sku)}</td>
       <td>${escapeHtml(item.tipo || '-')}</td>
       <td>${escapeHtml(item.proveedores?.nombre || '-')}</td>
       <td>${colorLabel(item.color)}</td>
       <td>${item.laqueado ? 'Sí' : 'No'}</td>
-      <td>${item.peso_volumetrico_kg ?? '-'}</td>
+      <td>${formatMedidas(item)}</td>
+      <td>${item.peso_fisico_kg ?? '-'}</td>
       <td>${item.activo
         ? '<span class="badge badge-ok">Activo</span>'
         : '<span class="badge badge-off">Inactivo</span>'}</td>
@@ -104,6 +152,15 @@ async function loadInventario() {
   );
 }
 
+function formatMedidas(item) {
+  if (item.diametro_cm && item.alto_cm) {
+    return `Ø${item.diametro_cm} × ${item.alto_cm}`;
+  }
+  const partes = [item.largo_cm, item.alto_cm, item.profundidad_cm];
+  if (partes.every(p => p === null || p === undefined)) return '-';
+  return partes.map(p => p ?? '?').join(' × ');
+}
+
 function colorLabel(color) {
   const labels = { natural: 'Natural', estandar: 'Estándar', chocolate: 'Chocolate', otro: 'Otro' };
   return labels[color] || (color ? escapeHtml(color) : '-');
@@ -117,6 +174,17 @@ function calcularPesoVolumetrico(alto, largo, profundidad, diametro) {
     return Math.round((alto * diametro * diametro / 4000) * 100) / 100;
   }
   return null;
+}
+
+function buildSelectOptions(lista, valorActual) {
+  const nombres = lista.map(v => v.nombre);
+  let html = lista.map(v =>
+    `<option value="${escapeAttr(v.nombre)}" ${v.nombre === valorActual ? 'selected' : ''}>${escapeHtml(v.nombre)}</option>`
+  ).join('');
+  if (valorActual && !nombres.includes(valorActual)) {
+    html += `<option value="${escapeAttr(valorActual)}" selected>${escapeHtml(valorActual)} (inactivo)</option>`;
+  }
+  return html;
 }
 
 function openForm(item = null) {
@@ -134,12 +202,10 @@ function openForm(item = null) {
         <input name="sku" required maxlength="200" value="${escapeAttr(item?.sku || '')}">
       </label>
       <label>Tipo
-        <input name="tipo" list="tipos-sugeridos" value="${escapeAttr(item?.tipo || '')}">
-        <datalist id="tipos-sugeridos">
-          <option value="Bancos Materos">
-          <option value="Taburetes">
-          <option value="Racks">
-        </datalist>
+        <select name="tipo">
+          <option value="">- Sin definir -</option>
+          ${buildSelectOptions(cacheTiposProducto, item?.tipo)}
+        </select>
       </label>
       <label>Proveedor (carpintero)
         <select name="proveedor_id">
@@ -148,10 +214,13 @@ function openForm(item = null) {
         </select>
       </label>
       <label>Tipo de madera
-        <input name="tipo_madera" value="${escapeAttr(item?.tipo_madera || '')}">
+        <select name="tipo_madera">
+          <option value="">- Sin definir -</option>
+          ${buildSelectOptions(cacheTiposMadera, item?.tipo_madera)}
+        </select>
       </label>
       <label>Color
-        <select name="color">
+        <select name="color" id="color-select">
           <option value="">- Sin definir -</option>
           <option value="natural" ${item?.color === 'natural' ? 'selected' : ''}>Natural</option>
           <option value="estandar" ${item?.color === 'estandar' ? 'selected' : ''}>Estándar</option>
@@ -159,15 +228,18 @@ function openForm(item = null) {
           <option value="otro" ${item?.color === 'otro' ? 'selected' : ''}>Otro</option>
         </select>
       </label>
+      <label id="color-detalle-wrap" class="${item?.color === 'otro' ? '' : 'hidden'}">Detalle del color
+        <input name="color_detalle" value="${escapeAttr(item?.color_detalle || '')}">
+      </label>
       <label class="checkbox" style="flex-direction: row; align-items: center;">
         <input type="checkbox" name="laqueado" ${item?.laqueado ? 'checked' : ''}> Laqueado
       </label>
 
-      <label>Alto (cm)
-        <input name="alto_cm" type="number" step="0.1" min="0" value="${item?.alto_cm ?? ''}">
-      </label>
       <label>Largo (cm)
         <input name="largo_cm" type="number" step="0.1" min="0" value="${item?.largo_cm ?? ''}">
+      </label>
+      <label>Alto (cm)
+        <input name="alto_cm" type="number" step="0.1" min="0" value="${item?.alto_cm ?? ''}">
       </label>
       <label>Profundidad (cm)
         <input name="profundidad_cm" type="number" step="0.1" min="0" value="${item?.profundidad_cm ?? ''}">
@@ -210,6 +282,10 @@ function openForm(item = null) {
     });
   });
 
+  document.getElementById('color-select').addEventListener('change', (e) => {
+    document.getElementById('color-detalle-wrap').classList.toggle('hidden', e.target.value !== 'otro');
+  });
+
   document.getElementById('btn-cancelar-form').addEventListener('click', () => {
     wrap.classList.add('hidden');
     wrap.innerHTML = '';
@@ -230,6 +306,7 @@ async function saveArticulo(e, id) {
     proveedor_id: fd.get('proveedor_id') || null,
     tipo_madera: fd.get('tipo_madera') || null,
     color: fd.get('color') || null,
+    color_detalle: fd.get('color') === 'otro' ? (fd.get('color_detalle') || null) : null,
     laqueado: fd.get('laqueado') === 'on',
     alto_cm: num(fd.get('alto_cm')),
     largo_cm: num(fd.get('largo_cm')),
