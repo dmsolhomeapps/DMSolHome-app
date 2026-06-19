@@ -79,6 +79,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .badge { font-size: 0.78rem; padding: 0.2rem 0.55rem; border-radius: 999px; white-space: nowrap; }
 .badge-ok { background: #E5EFE0; color: var(--success); }
 .badge-off { background: #F1E5E5; color: var(--danger); }
+.badge-neutral { background: var(--bg); color: var(--text-muted); }
+.badge-warn { background: #FBF1D2; color: #8A6D1F; }
+
+.oc-item-row { border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem; margin-bottom: 0.75rem; }
 
 @media (max-width: 720px) {
   .layout { flex-direction: column; }

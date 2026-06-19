@@ -1,6 +1,11 @@
 import { supabase } from './supabaseClient.js';
 import { signInWithGoogle, signOut, checkAutorizado } from './auth.js';
 import { initProveedores } from './proveedores.js';
+import { initInventario } from './inventario.js';
+
+const sectionInitializers = {
+  inventario: initInventario,
+};
 
 const screens = {
   login: document.getElementById('login-screen'),
@@ -38,11 +43,14 @@ document.getElementById('btn-logout').addEventListener('click', signOut);
 document.getElementById('btn-logout-denied').addEventListener('click', signOut);
 
 document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
     document.getElementById('section-' + btn.dataset.section).classList.remove('hidden');
+
+    const init = sectionInitializers[btn.dataset.section];
+    if (init) await init();
   });
 });
 

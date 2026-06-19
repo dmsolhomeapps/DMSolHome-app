@@ -71,15 +71,11 @@ Supabase, ese archivo solo alcanza.
 - ✅ Login con Google + control de acceso
 - ✅ ABM Proveedores
 - ✅ ABM Inventario
-- ✅ Stock (vista actual + filtros + búsqueda por código QR)
-- ✅ Órdenes de compra (alta con ítems + listado + detalle)
-- ✅ Recepciones (registrar lo que llega contra una orden, total o parcial)
+- ⬜ Stock (ver stock actual + búsqueda/escaneo por QR)
+- ⬜ Órdenes de compra (alta + listado por estado)
+- ⬜ Recepciones (registrar lo que llega, total o parcial)
 - ⬜ Usuarios (ABM de la tabla `emails_autorizados` desde la app, hoy se
   carga a mano por SQL Editor)
-
-Pendiente de probar de punta a punta: crear una orden de compra, registrar
-una recepción contra ella (total o parcial) y confirmar que el stock y el
-estado de la orden se actualizan solos.
 
 ## Identidad visual
 
