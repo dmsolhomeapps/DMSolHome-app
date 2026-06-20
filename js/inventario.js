@@ -265,27 +265,52 @@ async function imprimirQrPdf(items) {
   const pageHeight = 29.7;
   const cols = 3;
   const cellWidth = (pageWidth - margin * 2) / cols;
-  const qrSize = 3;
-  const rowHeight = 3.4;
+  const qrSize = 2;
+  const textX_offset = qrSize + 0.3;
+  const maxTextWidth = cellWidth - textX_offset - 0.2;
+  const lineHeightSku = 0.42;
+  const lineHeightDetalle = 0.35;
 
   let y = margin;
-  let col = 0;
 
   const saltoSiNecesario = (altura) => {
     if (y + altura > pageHeight - margin) {
       doc.addPage();
       y = margin;
-      col = 0;
     }
   };
 
-  tiposOrdenados.forEach(tipo => {
-    if (col !== 0) {
-      y += rowHeight;
-      col = 0;
-    }
+  const medirAlturaItem = (it) => {
+    doc.setFontSize(10);
+    const skuLines = doc.splitTextToSize(it.sku, maxTextWidth);
+    const altura = skuLines.length * lineHeightSku + 2 * lineHeightDetalle;
+    return { skuLines, altura: Math.max(qrSize, altura) + 0.35 };
+  };
 
-    saltoSiNecesario(0.9 + rowHeight);
+  const dibujarItem = (it, x, yItem, skuLines) => {
+    doc.addImage(qrMap[it.sku], 'PNG', x, yItem, qrSize, qrSize);
+
+    const textX = x + textX_offset;
+    let textY = yItem + lineHeightSku - 0.05;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    skuLines.forEach(linea => {
+      doc.text(linea, textX, textY);
+      textY += lineHeightSku;
+    });
+
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Medidas: ${formatMedidasPdf(it)}`, textX, textY, { maxWidth: maxTextWidth });
+    textY += lineHeightDetalle;
+    doc.text(`Laqueado: ${it.laqueado ? 'Sí' : 'No'}`, textX, textY, { maxWidth: maxTextWidth });
+  };
+
+  tiposOrdenados.forEach(tipo => {
+    const skus = grupos[tipo];
+
+    saltoSiNecesario(0.9 + medirAlturaItem(skus[0]).altura);
 
     doc.setFontSize(13);
     doc.setFont(undefined, 'bold');
@@ -293,24 +318,34 @@ async function imprimirQrPdf(items) {
     doc.setFont(undefined, 'normal');
     y += 0.9;
 
-    grupos[tipo].forEach(it => {
-      saltoSiNecesario(rowHeight);
-      const x = margin + col * cellWidth;
-      doc.addImage(qrMap[it.sku], 'PNG', x, y, qrSize, qrSize);
-      doc.setFontSize(10);
-      doc.text(it.sku, x + qrSize + 0.2, y + qrSize / 2 + 0.1, { maxWidth: cellWidth - qrSize - 0.3 });
+    for (let i = 0; i < skus.length; i += cols) {
+      const fila = skus.slice(i, i + cols);
+      const medidas = fila.map(it => medirAlturaItem(it));
+      const alturaFila = Math.max(...medidas.map(m => m.altura));
 
-      col++;
-      if (col >= cols) {
-        col = 0;
-        y += rowHeight;
-      }
-    });
+      saltoSiNecesario(alturaFila);
+
+      fila.forEach((it, idx) => {
+        const x = margin + idx * cellWidth;
+        dibujarItem(it, x, y, medidas[idx].skuLines);
+      });
+
+      y += alturaFila;
+    }
 
     y += 0.4;
   });
 
   doc.save('qr-productos.pdf');
+}
+
+function formatMedidasPdf(item) {
+  if (item.diametro_cm && item.alto_cm) {
+    return `Ø${item.diametro_cm} × ${item.alto_cm} cm`;
+  }
+  const partes = [item.largo_cm, item.alto_cm, item.profundidad_cm];
+  if (partes.every(p => p === null || p === undefined)) return '-';
+  return partes.map(p => p ?? '?').join(' × ') + ' cm';
 }
 
 function openForm(item = null) {
