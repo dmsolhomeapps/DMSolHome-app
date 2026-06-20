@@ -1,9 +1,13 @@
 import { supabase } from './supabaseClient.js';
 
 let initialized = false;
+let esSuperusuario = false;
 
 export async function initConfiguracion() {
   const section = document.getElementById('section-configuracion');
+
+  const { data } = await supabase.rpc('fn_es_superusuario');
+  esSuperusuario = data === true;
 
   if (!initialized) {
     section.innerHTML = `
@@ -47,6 +51,7 @@ export async function initConfiguracion() {
         </div>
       </div>
 
+      ${esSuperusuario ? `
       <div class="form-card">
         <h3>Roles</h3>
         <form id="form-nuevo-rol" class="form-grid">
@@ -75,6 +80,31 @@ export async function initConfiguracion() {
           </table>
         </div>
       </div>
+
+      <div class="form-card">
+        <h3>Usuarios autorizados</h3>
+        <form id="form-nuevo-usuario" class="form-grid">
+          <label>Email *
+            <input name="email" type="email" placeholder="persona@gmail.com" required>
+          </label>
+          <label>Nombre *
+            <input name="nombre" placeholder="Cómo se la nombra en la app" required>
+          </label>
+          <label class="checkbox" style="flex-direction: row; align-items: center;">
+            <input type="checkbox" name="es_superusuario"> Es súper usuario
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Nombre</th><th>Estado</th><th>Súper usuario</th><th></th></tr></thead>
+            <tbody id="usuarios-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      ` : ''}
     `;
 
     document.getElementById('form-nuevo-tipo-producto').addEventListener('submit', (e) =>
@@ -83,17 +113,23 @@ export async function initConfiguracion() {
     document.getElementById('form-nueva-madera').addEventListener('submit', (e) =>
       agregarValor(e, 'tipos_madera', 'tipos-madera-tbody')
     );
-    document.getElementById('form-nuevo-rol').addEventListener('submit', (e) =>
-      agregarValor(e, 'roles', 'roles-tbody', cargarAsignacionRoles)
-    );
+    if (esSuperusuario) {
+      document.getElementById('form-nuevo-rol').addEventListener('submit', (e) =>
+        agregarValor(e, 'roles', 'roles-tbody', cargarAsignacionRoles)
+      );
+      document.getElementById('form-nuevo-usuario').addEventListener('submit', agregarUsuarioAutorizado);
+    }
 
     initialized = true;
   }
 
   await renderLista('tipos_producto', 'tipos-producto-tbody');
   await renderLista('tipos_madera', 'tipos-madera-tbody');
-  await renderLista('roles', 'roles-tbody', cargarAsignacionRoles);
-  await cargarAsignacionRoles();
+  if (esSuperusuario) {
+    await renderLista('roles', 'roles-tbody', cargarAsignacionRoles);
+    await cargarAsignacionRoles();
+    await cargarUsuariosAutorizados();
+  }
 }
 
 async function agregarValor(e, tabla, tbodyId, onChange) {
@@ -264,6 +300,131 @@ async function cargarAsignacionRoles() {
           checkbox.checked = true;
         }
       }
+    })
+  );
+}
+
+async function agregarUsuarioAutorizado(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const email = fd.get('email').trim().toLowerCase();
+  const nombre = fd.get('nombre').trim();
+  if (!email || !nombre) return;
+
+  const { error } = await supabase.from('emails_autorizados').insert({
+    email,
+    nombre,
+    es_superusuario: fd.get('es_superusuario') === 'on',
+  });
+
+  if (error) {
+    alert('No se pudo agregar: ' + error.message);
+    return;
+  }
+  form.reset();
+  await cargarUsuariosAutorizados();
+}
+
+async function cargarUsuariosAutorizados() {
+  const tbody = document.getElementById('usuarios-tbody');
+  tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+
+  const { data, error } = await supabase
+    .from('emails_autorizados')
+    .select('*')
+    .order('email');
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="5">Todavía no hay usuarios cargados.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(u => `
+    <tr data-email="${escapeAttr(u.email)}">
+      <td>${escapeHtml(u.email)}</td>
+      <td class="celda-nombre-usuario">${escapeHtml(u.nombre)}</td>
+      <td>${u.activo
+        ? '<span class="badge badge-ok">Activo</span>'
+        : '<span class="badge badge-off">Inactivo</span>'}</td>
+      <td>${u.es_superusuario ? '<span class="badge badge-ok">Sí</span>' : 'No'}</td>
+      <td>
+        <button class="btn btn-text btn-sm" data-editar-usuario="${escapeAttr(u.email)}">Editar nombre</button>
+        <button class="btn btn-text btn-sm" data-toggle-usuario="${escapeAttr(u.email)}" data-activo="${u.activo}">
+          ${u.activo ? 'Desactivar' : 'Activar'}
+        </button>
+        <button class="btn btn-text btn-sm" data-borrar-usuario="${escapeAttr(u.email)}">Borrar</button>
+      </td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll('[data-toggle-usuario]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      const { error: errToggle } = await supabase
+        .from('emails_autorizados')
+        .update({ activo: btn.dataset.activo !== 'true' })
+        .eq('email', btn.dataset.toggleUsuario);
+      if (errToggle) {
+        alert('No se pudo actualizar: ' + errToggle.message);
+        return;
+      }
+      await cargarUsuariosAutorizados();
+    })
+  );
+
+  tbody.querySelectorAll('[data-borrar-usuario]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      if (!confirm(`¿Borrar a ${btn.dataset.borrarUsuario}? Va a perder el acceso a la app.`)) return;
+      const { error: errDelete } = await supabase
+        .from('emails_autorizados')
+        .delete()
+        .eq('email', btn.dataset.borrarUsuario);
+      if (errDelete) {
+        alert('No se pudo borrar: ' + errDelete.message);
+        return;
+      }
+      await cargarUsuariosAutorizados();
+    })
+  );
+
+  tbody.querySelectorAll('[data-editar-usuario]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const fila = btn.closest('tr');
+      const celda = fila.querySelector('.celda-nombre-usuario');
+      const nombreActual = celda.textContent;
+      celda.innerHTML = `<input type="text" class="input-edicion" value="${escapeAttr(nombreActual)}">`;
+      const input = celda.querySelector('input');
+      input.focus();
+      input.select();
+
+      const accionesCelda = fila.children[4];
+      accionesCelda.innerHTML = `
+        <button class="btn btn-text btn-sm" data-guardar-usuario="${btn.dataset.editarUsuario}">Guardar</button>
+        <button class="btn btn-text btn-sm" data-cancelar-edicion-usuario>Cancelar</button>
+      `;
+
+      accionesCelda.querySelector('[data-cancelar-edicion-usuario]').addEventListener('click', () => {
+        cargarUsuariosAutorizados();
+      });
+
+      accionesCelda.querySelector('[data-guardar-usuario]').addEventListener('click', async () => {
+        const nuevoNombre = input.value.trim();
+        if (!nuevoNombre) return;
+        const { error: errUpdate } = await supabase
+          .from('emails_autorizados')
+          .update({ nombre: nuevoNombre })
+          .eq('email', btn.dataset.editarUsuario);
+        if (errUpdate) {
+          alert('No se pudo guardar: ' + errUpdate.message);
+          return;
+        }
+        await cargarUsuariosAutorizados();
+      });
     })
   );
 }

@@ -19,10 +19,13 @@ create extension if not exists "pgcrypto";
 --   ('cecilia@gmail.com', 'Cecilia'),
 --   ('hermano@gmail.com', 'Tu hermano'),
 --   ('tercera.persona@gmail.com', 'Tercera persona');
+-- es_superusuario: marca a la única persona que puede definir y asignar
+-- roles (las pantallas de Roles ni se le muestran a los demás).
 create table emails_autorizados (
   email text primary key,
   nombre text not null,
   activo boolean not null default true,
+  es_superusuario boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -80,9 +83,17 @@ create table perfiles_roles (
   primary key (perfil_id, rol_id)
 );
 
-create or replace function fn_tiene_rol(p_rol_nombre text)
+create or replace function fn_es_superusuario()
 returns boolean as $$
   select exists (
+    select 1 from public.emails_autorizados
+    where email = auth.email() and es_superusuario = true
+  );
+$$ language sql security definer stable set search_path = public;
+
+create or replace function fn_tiene_rol(p_rol_nombre text)
+returns boolean as $$
+  select fn_es_superusuario() or exists (
     select 1
     from public.perfiles_roles pr
     join public.roles r on r.id = pr.rol_id
@@ -96,6 +107,12 @@ alter table roles enable row level security;
 alter table perfiles_roles enable row level security;
 
 create policy "lectura_interna" on emails_autorizados for select to authenticated using (true);
+create policy "emails_autorizados_alta_superusuario" on emails_autorizados
+  for insert to authenticated with check (fn_es_superusuario());
+create policy "emails_autorizados_edicion_superusuario" on emails_autorizados
+  for update to authenticated using (fn_es_superusuario()) with check (fn_es_superusuario());
+create policy "emails_autorizados_baja_superusuario" on emails_autorizados
+  for delete to authenticated using (fn_es_superusuario());
 create policy "lectura_perfiles" on perfiles for select to authenticated using (true);
 
 grant usage on schema public to authenticated;
@@ -517,10 +534,10 @@ create policy "acceso_interno" on tipos_madera for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on inventario for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on roles for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on perfiles_roles for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "roles_solo_superusuario" on roles for all to authenticated
+  using (fn_es_superusuario()) with check (fn_es_superusuario());
+create policy "perfiles_roles_solo_superusuario" on perfiles_roles for all to authenticated
+  using (fn_es_superusuario()) with check (fn_es_superusuario());
 
 create policy "ordenes_lectura" on ordenes_compra for select to authenticated
   using (fn_usuario_autorizado());
@@ -545,4 +562,5 @@ grant all on all tables in schema public to authenticated;
 grant select on stock_actual to authenticated;
 grant execute on function fn_recibir_producto(uuid, numeric, date, text) to authenticated;
 grant execute on function fn_tiene_rol(text) to authenticated;
+grant execute on function fn_es_superusuario() to authenticated;
 alter default privileges in schema public grant all on tables to authenticated;

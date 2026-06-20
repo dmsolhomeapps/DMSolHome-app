@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm';
 
 let initialized = false;
 let cacheInventario = [];
