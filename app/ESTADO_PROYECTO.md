@@ -82,15 +82,25 @@ Supabase, ese archivo solo alcanza.
 
 ## Roles y permisos
 
-Hay una tabla `roles` (editable desde Configuración) y una asignación
-`perfiles_roles` (también desde Configuración, con una matriz de
-personas × roles). El rol "Editor de órdenes" es el único que hoy se usa
-para algo concreto: solo quien lo tenga asignado puede editar una orden
-de compra ya creada (la edición es solo de cabecera: proveedor, tipo,
-fechas, días de aviso y notas - no se editan los ítems/cantidades). El
-rol "Supervisor de compras" está creado pero todavía sin uso real más
-allá de identificar a la persona si en el futuro se agrega el envío de
-mails.
+Hay un súper usuario fijo (`dmsolhomeapps@gmail.com`, marcado con
+`es_superusuario = true` en `emails_autorizados`) que es el único que
+puede ver y modificar las pantallas de Roles y Asignación de roles - a
+los demás usuarios ni se les muestran esos paneles en Configuración, y
+si intentaran leerlos o escribirlos por fuera de la app (por ejemplo
+llamando directo a la API), la base los rechaza igual por RLS. El súper
+usuario además pasa automáticamente cualquier chequeo de rol
+(`fn_tiene_rol`), así que tiene acceso total sin tener que
+autoasignarse nada.
+
+Aparte del súper usuario, hay una tabla `roles` (editable solo por él
+desde Configuración) y una asignación `perfiles_roles` (también solo
+él, con una matriz de personas × roles). El rol "Editor de órdenes" es
+el único que hoy se usa para algo concreto: solo quien lo tenga
+asignado (o sea el súper usuario) puede editar una orden de compra ya
+creada (la edición es solo de cabecera: proveedor, tipo, fechas, días
+de aviso y notas - no se editan los ítems/cantidades). El rol
+"Supervisor de compras" está creado pero todavía sin uso real más allá
+de identificar a la persona si en el futuro se agrega el envío de mails.
 
 ## Alerta de órdenes próximas a vencer
 
@@ -142,3 +152,12 @@ oscuro `#61552B` (textos/botones principales), amarillo mostaza `#EAC634`
 - Si algo se ve desalineado/raro después de subir un cambio y no entendés
   por qué: probablemente es caché del navegador - probar con Ctrl+Shift+R
   antes de asumir que el código está mal.
+- La librería `qrcode` (para generar la imagen del QR) NO se carga con un
+  `<script src="...">` normal - el paquete publicado en npm no tiene un
+  archivo armado para eso en esa ruta, y cargarlo así falla en silencio
+  (`QRCode is not defined` recién al usarla). Se importa como módulo ES
+  directamente en cada archivo que la necesita:
+  `import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm';`
+  (ya está así en `stock.js` e `inventario.js`). La librería `html5-qrcode`
+  (el escáner de cámara) sí funciona con `<script src="...">` normal, esa
+  no tiene este problema.

@@ -1,10 +1,12 @@
 import { supabase } from './supabaseClient.js';
+import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm';
 
 let initialized = false;
 let cacheInventario = [];
 let cacheProveedores = [];
 let cacheTiposProducto = [];
 let cacheTiposMadera = [];
+let seleccionados = new Set();
 
 export async function initInventario() {
   const section = document.getElementById('section-inventario');
@@ -13,7 +15,11 @@ export async function initInventario() {
     section.innerHTML = `
       <div class="section-header">
         <h2>Inventario</h2>
-        <button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>
+        <div>
+          <button id="btn-imprimir-qr-todos" class="btn btn-secondary">Imprimir QR (todos)</button>
+          <button id="btn-imprimir-qr-seleccion" class="btn btn-secondary">Imprimir QR (seleccionados)</button>
+          <button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>
+        </div>
       </div>
       <div id="articulo-form-wrap" class="form-card hidden"></div>
       <div class="form-card">
@@ -30,6 +36,7 @@ export async function initInventario() {
         <table class="data-table">
           <thead>
             <tr>
+              <th><input type="checkbox" id="check-todos"></th>
               <th>SKU</th><th>Tipo</th><th>Proveedor</th><th>Color</th>
               <th>Laqueado</th><th>Medidas (L×A×P cm)</th><th>Peso físico (kg)</th>
               <th>Estado</th><th></th>
@@ -42,6 +49,25 @@ export async function initInventario() {
     document.getElementById('btn-nuevo-articulo').addEventListener('click', () => openForm());
     document.getElementById('filtro-tipo-inv').addEventListener('change', renderTabla);
     document.getElementById('filtro-sku-inv').addEventListener('input', renderTabla);
+    document.getElementById('btn-imprimir-qr-todos').addEventListener('click', () =>
+      imprimirQrPdf(cacheInventario.filter(i => i.activo))
+    );
+    document.getElementById('btn-imprimir-qr-seleccion').addEventListener('click', () => {
+      const items = cacheInventario.filter(i => seleccionados.has(i.id));
+      if (!items.length) {
+        alert('No seleccionaste ningún artículo. Tildá los que quieras imprimir, o usá "Imprimir QR (todos)".');
+        return;
+      }
+      imprimirQrPdf(items);
+    });
+    document.getElementById('check-todos').addEventListener('change', (e) => {
+      const filtrados = obtenerFiltrados();
+      filtrados.forEach(item => {
+        if (e.target.checked) seleccionados.add(item.id);
+        else seleccionados.delete(item.id);
+      });
+      renderTabla();
+    });
     initialized = true;
   }
 
@@ -76,7 +102,7 @@ async function loadProveedores() {
 
 async function loadInventario() {
   const tbody = document.getElementById('inventario-tbody');
-  tbody.innerHTML = '<tr><td colspan="9">Cargando...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="10">Cargando...</td></tr>';
 
   const { data, error } = await supabase
     .from('inventario')
@@ -84,7 +110,7 @@ async function loadInventario() {
     .order('sku');
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="9">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
     return;
   }
 
@@ -102,24 +128,29 @@ function poblarFiltroTipo() {
   select.value = actual;
 }
 
-function renderTabla() {
-  const tbody = document.getElementById('inventario-tbody');
+function obtenerFiltrados() {
   const tipo = document.getElementById('filtro-tipo-inv').value;
   const sku = document.getElementById('filtro-sku-inv').value.trim().toLowerCase();
 
-  const filtrados = cacheInventario.filter(item => {
+  return cacheInventario.filter(item => {
     if (tipo && item.tipo !== tipo) return false;
     if (sku && !item.sku.toLowerCase().includes(sku)) return false;
     return true;
   });
+}
+
+function renderTabla() {
+  const tbody = document.getElementById('inventario-tbody');
+  const filtrados = obtenerFiltrados();
 
   if (!filtrados.length) {
-    tbody.innerHTML = '<tr><td colspan="9">No hay artículos que coincidan con el filtro.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10">No hay artículos que coincidan con el filtro.</td></tr>';
     return;
   }
 
   tbody.innerHTML = filtrados.map(item => `
     <tr>
+      <td><input type="checkbox" class="check-item" data-id="${item.id}" ${seleccionados.has(item.id) ? 'checked' : ''}></td>
       <td>${escapeHtml(item.sku)}</td>
       <td>${escapeHtml(item.tipo || '-')}</td>
       <td>${escapeHtml(item.proveedores?.nombre || '-')}</td>
@@ -139,6 +170,12 @@ function renderTabla() {
     </tr>
   `).join('');
 
+  tbody.querySelectorAll('.check-item').forEach(chk =>
+    chk.addEventListener('change', () => {
+      if (chk.checked) seleccionados.add(chk.dataset.id);
+      else seleccionados.delete(chk.dataset.id);
+    })
+  );
   tbody.querySelectorAll('[data-edit]').forEach(btn =>
     btn.addEventListener('click', () => {
       const item = cacheInventario.find(i => i.id === btn.dataset.edit);
@@ -185,6 +222,95 @@ function buildSelectOptions(lista, valorActual) {
     html += `<option value="${escapeAttr(valorActual)}" selected>${escapeHtml(valorActual)} (inactivo)</option>`;
   }
   return html;
+}
+
+function generarQrDataUrl(texto) {
+  return new Promise((resolve, reject) => {
+    QRCode.toDataURL(texto, { width: 240, margin: 0 }, (err, url) => {
+      if (err) reject(err);
+      else resolve(url);
+    });
+  });
+}
+
+async function imprimirQrPdf(items) {
+  if (!items.length) {
+    alert('No hay artículos para imprimir.');
+    return;
+  }
+
+  const grupos = {};
+  items.forEach(it => {
+    const tipo = it.tipo || 'Sin tipo asignado';
+    if (!grupos[tipo]) grupos[tipo] = [];
+    grupos[tipo].push(it);
+  });
+  const tiposOrdenados = Object.keys(grupos).sort((a, b) => {
+    if (a === 'Sin tipo asignado') return 1;
+    if (b === 'Sin tipo asignado') return -1;
+    return a.localeCompare(b);
+  });
+  tiposOrdenados.forEach(t => grupos[t].sort((a, b) => a.sku.localeCompare(b.sku)));
+
+  const qrMap = {};
+  await Promise.all(items.map(async it => {
+    qrMap[it.sku] = await generarQrDataUrl(it.sku);
+  }));
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'cm', format: 'a4' });
+
+  const margin = 1.5;
+  const pageWidth = 21;
+  const pageHeight = 29.7;
+  const cols = 3;
+  const cellWidth = (pageWidth - margin * 2) / cols;
+  const qrSize = 3;
+  const rowHeight = 3.4;
+
+  let y = margin;
+  let col = 0;
+
+  const saltoSiNecesario = (altura) => {
+    if (y + altura > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+      col = 0;
+    }
+  };
+
+  tiposOrdenados.forEach(tipo => {
+    if (col !== 0) {
+      y += rowHeight;
+      col = 0;
+    }
+
+    saltoSiNecesario(0.9 + rowHeight);
+
+    doc.setFontSize(13);
+    doc.setFont(undefined, 'bold');
+    doc.text(tipo, margin, y + 0.5);
+    doc.setFont(undefined, 'normal');
+    y += 0.9;
+
+    grupos[tipo].forEach(it => {
+      saltoSiNecesario(rowHeight);
+      const x = margin + col * cellWidth;
+      doc.addImage(qrMap[it.sku], 'PNG', x, y, qrSize, qrSize);
+      doc.setFontSize(10);
+      doc.text(it.sku, x + qrSize + 0.2, y + qrSize / 2 + 0.1, { maxWidth: cellWidth - qrSize - 0.3 });
+
+      col++;
+      if (col >= cols) {
+        col = 0;
+        y += rowHeight;
+      }
+    });
+
+    y += 0.4;
+  });
+
+  doc.save('qr-productos.pdf');
 }
 
 function openForm(item = null) {

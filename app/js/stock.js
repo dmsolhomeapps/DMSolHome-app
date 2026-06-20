@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient.js';
+import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm';
 
 let initialized = false;
 let cacheStock = [];
@@ -10,7 +11,6 @@ export async function initStock() {
     section.innerHTML = `
       <div class="section-header">
         <h2>Stock</h2>
-        <button id="btn-imprimir-qrs" class="btn btn-secondary">Imprimir QR de todos los productos</button>
       </div>
 
       <div class="form-card">
@@ -41,8 +41,6 @@ export async function initStock() {
         </div>
       </div>
 
-      <div id="etiquetas-print" class="hidden"></div>
-
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -56,7 +54,6 @@ export async function initStock() {
       </div>
     `;
 
-    document.getElementById('btn-imprimir-qrs').addEventListener('click', imprimirTodosLosQr);
     ['filtro-tipo', 'filtro-color', 'filtro-laqueado'].forEach(id =>
       document.getElementById(id).addEventListener('change', renderTabla)
     );
@@ -189,40 +186,6 @@ function abrirFormularioLaqueado(btn) {
     }
     await loadStock();
   });
-}
-
-async function imprimirTodosLosQr() {
-  const { data, error } = await supabase
-    .from('inventario')
-    .select('sku, descripcion')
-    .eq('activo', true)
-    .order('sku');
-
-  if (error) {
-    alert('No se pudo generar la hoja: ' + error.message);
-    return;
-  }
-  if (!data.length) {
-    alert('No hay artículos activos en el inventario.');
-    return;
-  }
-
-  const contenedor = document.getElementById('etiquetas-print');
-  contenedor.classList.remove('hidden');
-  contenedor.innerHTML = data.map((item, i) => `
-    <div class="etiqueta">
-      <canvas id="qr-hoja-${i}"></canvas>
-      <span>${escapeHtml(item.sku)}</span>
-    </div>
-  `).join('');
-
-  data.forEach((item, i) => {
-    QRCode.toCanvas(document.getElementById(`qr-hoja-${i}`), item.sku, { width: 110 }, (err) => {
-      if (err) console.error('Error generando QR:', err);
-    });
-  });
-
-  setTimeout(() => window.print(), 200);
 }
 
 function colorLabel(color) {

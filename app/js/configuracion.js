@@ -1,9 +1,13 @@
 import { supabase } from './supabaseClient.js';
 
 let initialized = false;
+let esSuperusuario = false;
 
 export async function initConfiguracion() {
   const section = document.getElementById('section-configuracion');
+
+  const { data } = await supabase.rpc('fn_es_superusuario');
+  esSuperusuario = data === true;
 
   if (!initialized) {
     section.innerHTML = `
@@ -47,6 +51,7 @@ export async function initConfiguracion() {
         </div>
       </div>
 
+      ${esSuperusuario ? `
       <div class="form-card">
         <h3>Roles</h3>
         <form id="form-nuevo-rol" class="form-grid">
@@ -75,6 +80,7 @@ export async function initConfiguracion() {
           </table>
         </div>
       </div>
+      ` : ''}
     `;
 
     document.getElementById('form-nuevo-tipo-producto').addEventListener('submit', (e) =>
@@ -83,17 +89,21 @@ export async function initConfiguracion() {
     document.getElementById('form-nueva-madera').addEventListener('submit', (e) =>
       agregarValor(e, 'tipos_madera', 'tipos-madera-tbody')
     );
-    document.getElementById('form-nuevo-rol').addEventListener('submit', (e) =>
-      agregarValor(e, 'roles', 'roles-tbody', cargarAsignacionRoles)
-    );
+    if (esSuperusuario) {
+      document.getElementById('form-nuevo-rol').addEventListener('submit', (e) =>
+        agregarValor(e, 'roles', 'roles-tbody', cargarAsignacionRoles)
+      );
+    }
 
     initialized = true;
   }
 
   await renderLista('tipos_producto', 'tipos-producto-tbody');
   await renderLista('tipos_madera', 'tipos-madera-tbody');
-  await renderLista('roles', 'roles-tbody', cargarAsignacionRoles);
-  await cargarAsignacionRoles();
+  if (esSuperusuario) {
+    await renderLista('roles', 'roles-tbody', cargarAsignacionRoles);
+    await cargarAsignacionRoles();
+  }
 }
 
 async function agregarValor(e, tabla, tbodyId, onChange) {
