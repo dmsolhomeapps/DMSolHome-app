@@ -263,13 +263,16 @@ async function imprimirQrPdf(items) {
   const margin = 1.5;
   const pageWidth = 21;
   const pageHeight = 29.7;
-  const cols = 3;
+  const cols = 2;
   const cellWidth = (pageWidth - margin * 2) / cols;
   const qrSize = 2;
   const textX_offset = qrSize + 0.3;
   const maxTextWidth = cellWidth - textX_offset - 0.2;
   const lineHeightSku = 0.42;
   const lineHeightDetalle = 0.35;
+  const fontSizeSkuMax = 10;
+  const fontSizeSkuMin = 6.5;
+  const alturaFila = Math.max(qrSize, lineHeightSku + 2 * lineHeightDetalle) + 0.35;
 
   let y = margin;
 
@@ -280,25 +283,28 @@ async function imprimirQrPdf(items) {
     }
   };
 
-  const medirAlturaItem = (it) => {
-    doc.setFontSize(10);
-    const skuLines = doc.splitTextToSize(it.sku, maxTextWidth);
-    const altura = skuLines.length * lineHeightSku + 2 * lineHeightDetalle;
-    return { skuLines, altura: Math.max(qrSize, altura) + 0.35 };
+  const calcularFontSizeSku = (sku) => {
+    let fontSize = fontSizeSkuMax;
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(fontSize);
+    while (doc.getTextWidth(sku) > maxTextWidth && fontSize > fontSizeSkuMin) {
+      fontSize -= 0.5;
+      doc.setFontSize(fontSize);
+    }
+    return fontSize;
   };
 
-  const dibujarItem = (it, x, yItem, skuLines) => {
+  const dibujarItem = (it, x, yItem) => {
     doc.addImage(qrMap[it.sku], 'PNG', x, yItem, qrSize, qrSize);
 
     const textX = x + textX_offset;
     let textY = yItem + lineHeightSku - 0.05;
 
-    doc.setFontSize(10);
+    const fontSizeSku = calcularFontSizeSku(it.sku);
+    doc.setFontSize(fontSizeSku);
     doc.setFont(undefined, 'bold');
-    skuLines.forEach(linea => {
-      doc.text(linea, textX, textY);
-      textY += lineHeightSku;
-    });
+    doc.text(it.sku, textX, textY);
+    textY += lineHeightSku;
 
     doc.setFont(undefined, 'normal');
     doc.setFontSize(8.5);
@@ -310,7 +316,7 @@ async function imprimirQrPdf(items) {
   tiposOrdenados.forEach(tipo => {
     const skus = grupos[tipo];
 
-    saltoSiNecesario(0.9 + medirAlturaItem(skus[0]).altura);
+    saltoSiNecesario(0.9 + alturaFila);
 
     doc.setFontSize(13);
     doc.setFont(undefined, 'bold');
@@ -320,14 +326,12 @@ async function imprimirQrPdf(items) {
 
     for (let i = 0; i < skus.length; i += cols) {
       const fila = skus.slice(i, i + cols);
-      const medidas = fila.map(it => medirAlturaItem(it));
-      const alturaFila = Math.max(...medidas.map(m => m.altura));
 
       saltoSiNecesario(alturaFila);
 
       fila.forEach((it, idx) => {
         const x = margin + idx * cellWidth;
-        dibujarItem(it, x, y, medidas[idx].skuLines);
+        dibujarItem(it, x, y);
       });
 
       y += alturaFila;
