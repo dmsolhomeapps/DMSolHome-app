@@ -263,7 +263,7 @@ async function imprimirQrPdf(items) {
   const margin = 1.5;
   const pageWidth = 21;
   const pageHeight = 29.7;
-  const cols = 3;
+  const cols = 2;
   const cellWidth = (pageWidth - margin * 2) / cols;
   const qrSize = 2;
   const textX_offset = qrSize + 0.3;

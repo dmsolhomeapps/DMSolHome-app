@@ -120,7 +120,7 @@ function openFormRapida() {
         </select>
       </label>
       <label>Cantidad recibida *
-        <input name="cantidad" type="number" min="0.01" step="1" required>
+        <input name="cantidad" type="number" min="1" step="1" required>
       </label>
       <label>De esa cantidad, ¿cuántas ya vienen laqueadas?
         <input name="cantidad_laqueada" type="number" min="0" step="1" value="0">
