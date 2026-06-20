@@ -95,16 +95,19 @@ varios a la vez):
   (junto al súper usuario) que puede editar una orden de compra ya
   creada (cabecera solamente: proveedor, tipo, fechas, días de aviso y
   notas - no los ítems/cantidades).
-- **Supervisor de Almacén**: ve Recepciones, Inventario y Stock, y es
-  el único (junto al súper usuario) que puede hacer ajustes manuales de
-  stock (alta/baja) y registrar laqueado desde la pantalla de Stock.
+- **Supervisor de Almacén**: ve Recepciones, Inventario, Stock y
+  Configuración de Maestros (Tipos de producto/madera), y es el único
+  (junto al súper usuario y Configurador) que puede dar de alta/editar
+  esos tipos, además de ser el único que puede hacer ajustes manuales
+  de stock (alta/baja) y registrar laqueado desde la pantalla de Stock.
 - **Operador de Almacén**: ve Recepciones, Inventario y Stock, pero NO
   ve los botones de ajuste de stock ni de laqueado (son de solo
-  consulta para este rol).
-- **Configurador**: ve Proveedores y Configuración (Tipos de producto/
-  madera), y es el único (junto al súper usuario) que puede dar de alta
-  o editar artículos de inventario - el resto de los roles solo puede
-  verlos.
+  consulta para este rol), y no tiene acceso a Configuración de
+  Maestros.
+- **Configurador**: ve Proveedores y Configuración de Maestros (Tipos
+  de producto/madera), y es el único (junto al súper usuario) que puede
+  dar de alta o editar artículos de inventario - el resto de los roles
+  solo puede verlos.
 
 Las descripciones de cada rol están guardadas en la columna
 `descripcion` de la tabla `roles`, y se muestran como ayuda en la
@@ -130,10 +133,24 @@ El menú de la izquierda se arma dinámicamente en `js/app.js` (ya no está
 fijo en `index.html`) según los roles de quien inició sesión, agrupado
 en tres secciones: **Maestros** (Proveedores, Inventario), **Gestión**
 (Órdenes de compra, Recepciones, Stock) y **Configuración**. Si un grupo
-queda sin ningún ítem visible para esa persona, ni el título del grupo
-se muestra. La primera pantalla visible para cada usuario se activa
-sola al iniciar sesión (no hay una pantalla "default" fija, porque
-depende de qué rol tenga cada uno).
+o subgrupo queda sin ningún ítem visible para esa persona, ni su título
+se muestra. La primera pantalla visible para cada usuario se activa sola
+al iniciar sesión (no hay una pantalla "default" fija, porque depende
+de qué rol tenga cada uno).
+
+**Configuración** es a su vez un agrupador con dos subgrupos, cada uno
+con sus propias pantallas independientes (cada una con su propio
+`init` en `js/configuracion.js`, ya no es una sola pantalla con todo
+junto):
+- **Configuración de Maestros**: Tipos de producto, Tipos de madera.
+  Visible para Supervisor de Almacén, Configurador y súper usuario (acá
+  sí hay restricción real a nivel de base: dar de alta/editar/borrar
+  estos valores requiere alguno de esos roles, la lectura sigue abierta).
+- **Gestión de usuarios y roles**: Usuarios, Roles, Asignación de
+  roles. Visible únicamente para el súper usuario (en `app.js` se
+  marca con una clave especial que ningún rol normal puede cumplir,
+  `__solo_superusuario__`, así que solo pasa el chequeo rápido que
+  tiene el súper usuario para cualquier permiso).
 
 ## Stock por ubicación
 
@@ -179,9 +196,11 @@ no se sepa de qué orden vino.
   QR escaneando con la cámara + ajuste manual de alta/baja)
 - ✅ Órdenes de compra (alta con ítems + listado + detalle)
 - ✅ Recepciones (registrar lo que llega contra una orden, total o parcial)
-- ✅ Configuración (gestión de las listas Tipos de producto y Tipos de
-  madera para todos; Roles, Asignación de roles y Usuarios autorizados
-  solo visibles para el súper usuario)
+- ✅ Configuración, ahora dividida en 5 pantallas independientes
+  agrupadas en dos subgrupos: Configuración de Maestros (Tipos de
+  producto, Tipos de madera) y Gestión de usuarios y roles (Usuarios,
+  Roles, Asignación de roles - esta última solo visible para el súper
+  usuario)
 
 Pendiente de probar de punta a punta: crear una orden de compra, registrar
 una recepción contra ella (total o parcial) y confirmar que el stock y el

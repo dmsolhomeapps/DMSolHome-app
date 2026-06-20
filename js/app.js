@@ -5,12 +5,18 @@ import { initInventario } from './inventario.js';
 import { initStock } from './stock.js';
 import { initOrdenes } from './ordenes.js';
 import { initRecepciones } from './recepciones.js';
-import { initConfiguracion } from './configuracion.js';
+import {
+  initTiposProducto, initTiposMadera, initUsuarios, initRoles, initAsignacionRoles,
+} from './configuracion.js';
 import { cargarPermisos, tienePermiso } from './permisos.js';
 
 // roles: claves que requiere ver esta pantalla ('comprador',
 // 'supervisorAlmacen', 'operadorAlmacen', 'configurador'). Vacío =
 // visible para cualquier usuario autorizado, sin restricción de rol.
+// SOLO_SUPER es una clave que nunca existe en el cache de permisos, así
+// que solo el súper usuario (que pasa cualquier chequeo) puede entrar.
+const SOLO_SUPER = ['__solo_superusuario__'];
+
 const navGroups = [
   {
     label: 'Maestros',
@@ -29,11 +35,29 @@ const navGroups = [
   },
   {
     label: 'Configuración',
-    items: [
-      { key: 'configuracion', label: 'Configuración', init: initConfiguracion, roles: ['configurador'] },
+    subgroups: [
+      {
+        label: 'Configuración de Maestros',
+        items: [
+          { key: 'tipos-producto', label: 'Tipos de producto', init: initTiposProducto, roles: ['supervisorAlmacen', 'configurador'] },
+          { key: 'tipos-madera', label: 'Tipos de madera', init: initTiposMadera, roles: ['supervisorAlmacen', 'configurador'] },
+        ],
+      },
+      {
+        label: 'Gestión de usuarios y roles',
+        items: [
+          { key: 'usuarios', label: 'Usuarios', init: initUsuarios, roles: SOLO_SUPER },
+          { key: 'roles', label: 'Roles', init: initRoles, roles: SOLO_SUPER },
+          { key: 'asignacion-roles', label: 'Asignación de roles', init: initAsignacionRoles, roles: SOLO_SUPER },
+        ],
+      },
     ],
   },
 ];
+
+function obtenerTodosLosItems() {
+  return navGroups.flatMap(g => g.items || g.subgroups.flatMap(sg => sg.items));
+}
 
 const screens = {
   login: document.getElementById('login-screen'),
@@ -46,31 +70,57 @@ function showScreen(name) {
   screens[name].classList.remove('hidden');
 }
 
+function renderGrupoSimple(grupo) {
+  const itemsVisibles = grupo.items.filter(item => tienePermiso(item.roles));
+  if (!itemsVisibles.length) return null;
+
+  const mostrarHeader = !(itemsVisibles.length === 1 && itemsVisibles[0].label === grupo.label);
+
+  const html = `
+    ${mostrarHeader ? `<div class="nav-group-label">${grupo.label}</div>` : ''}
+    ${itemsVisibles.map(item =>
+      `<button class="nav-item" data-section="${item.key}">${item.label}</button>`
+    ).join('')}
+  `;
+  return { html, primerItem: itemsVisibles[0] };
+}
+
+function renderGrupoConSubgrupos(grupo) {
+  const subRenderizados = grupo.subgroups
+    .map(sub => {
+      const itemsVisibles = sub.items.filter(item => tienePermiso(item.roles));
+      if (!itemsVisibles.length) return null;
+      const html = `
+        <div class="nav-subgroup-label">${sub.label}</div>
+        ${itemsVisibles.map(item =>
+          `<button class="nav-item nav-item-sub" data-section="${item.key}">${item.label}</button>`
+        ).join('')}
+      `;
+      return { html, primerItem: itemsVisibles[0] };
+    })
+    .filter(Boolean);
+
+  if (!subRenderizados.length) return null;
+
+  const html = `<div class="nav-group-label">${grupo.label}</div>` +
+    subRenderizados.map(s => s.html).join('');
+  return { html, primerItem: subRenderizados[0].primerItem };
+}
+
 function construirMenu() {
   const nav = document.getElementById('sidebar-nav');
-  let primerItemVisible = null;
 
-  nav.innerHTML = navGroups.map(grupo => {
-    const itemsVisibles = grupo.items.filter(item => tienePermiso(item.roles));
-    if (!itemsVisibles.length) return '';
+  const gruposRenderizados = navGroups
+    .map(grupo => grupo.subgroups ? renderGrupoConSubgrupos(grupo) : renderGrupoSimple(grupo))
+    .filter(Boolean);
 
-    if (!primerItemVisible) primerItemVisible = itemsVisibles[0];
-
-    const mostrarHeader = !(itemsVisibles.length === 1 && itemsVisibles[0].label === grupo.label);
-
-    return `
-      ${mostrarHeader ? `<div class="nav-group-label">${grupo.label}</div>` : ''}
-      ${itemsVisibles.map(item =>
-        `<button class="nav-item" data-section="${item.key}">${item.label}</button>`
-      ).join('')}
-    `;
-  }).join('');
+  nav.innerHTML = gruposRenderizados.map(g => g.html).join('');
 
   nav.querySelectorAll('.nav-item').forEach(btn => {
     btn.addEventListener('click', () => activarSeccion(btn.dataset.section));
   });
 
-  return primerItemVisible;
+  return gruposRenderizados.length ? gruposRenderizados[0].primerItem : null;
 }
 
 async function activarSeccion(key) {
@@ -80,7 +130,7 @@ async function activarSeccion(key) {
   document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
   document.getElementById('section-' + key).classList.remove('hidden');
 
-  const item = navGroups.flatMap(g => g.items).find(i => i.key === key);
+  const item = obtenerTodosLosItems().find(i => i.key === key);
   if (item?.init) await item.init();
 }
 

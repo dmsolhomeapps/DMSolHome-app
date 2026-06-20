@@ -541,10 +541,25 @@ alter table movimientos_stock enable row level security;
 
 create policy "acceso_interno" on proveedores for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on tipos_producto for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on tipos_madera for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "tipos_producto_lectura" on tipos_producto for select to authenticated
+  using (fn_usuario_autorizado());
+create policy "tipos_producto_escritura" on tipos_producto for insert to authenticated
+  with check (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
+create policy "tipos_producto_edicion" on tipos_producto for update to authenticated
+  using (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')))
+  with check (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
+create policy "tipos_producto_baja" on tipos_producto for delete to authenticated
+  using (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
+
+create policy "tipos_madera_lectura" on tipos_madera for select to authenticated
+  using (fn_usuario_autorizado());
+create policy "tipos_madera_escritura" on tipos_madera for insert to authenticated
+  with check (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
+create policy "tipos_madera_edicion" on tipos_madera for update to authenticated
+  using (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')))
+  with check (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
+create policy "tipos_madera_baja" on tipos_madera for delete to authenticated
+  using (fn_usuario_autorizado() and (fn_tiene_rol('Supervisor de Almacén') or fn_tiene_rol('Configurador')));
 create policy "inventario_lectura" on inventario for select to authenticated
   using (fn_usuario_autorizado());
 create policy "inventario_alta" on inventario for insert to authenticated

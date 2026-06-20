@@ -1,22 +1,20 @@
 import { supabase } from './supabaseClient.js';
 
-let initialized = false;
-let esSuperusuario = false;
+let initTipoProductoHecho = false;
+let initTipoMaderaHecho = false;
+let initUsuariosHecho = false;
+let initRolesHecho = false;
+let initAsignacionHecho = false;
 
-export async function initConfiguracion() {
-  const section = document.getElementById('section-configuracion');
-
-  const { data } = await supabase.rpc('fn_es_superusuario');
-  esSuperusuario = data === true;
-
-  if (!initialized) {
+// ===================================================================
+// TIPOS DE PRODUCTO
+// ===================================================================
+export async function initTiposProducto() {
+  const section = document.getElementById('section-tipos-producto');
+  if (!initTipoProductoHecho) {
     section.innerHTML = `
-      <div class="section-header">
-        <h2>Configuración</h2>
-      </div>
-
+      <div class="section-header"><h2>Tipos de producto</h2></div>
       <div class="form-card">
-        <h3>Tipos de producto</h3>
         <form id="form-nuevo-tipo-producto" class="form-grid">
           <label class="full">Nuevo tipo
             <input name="nombre" placeholder="ej: Mesas ratonas" required>
@@ -32,9 +30,24 @@ export async function initConfiguracion() {
           </table>
         </div>
       </div>
+    `;
+    document.getElementById('form-nuevo-tipo-producto').addEventListener('submit', (e) =>
+      agregarValor(e, 'tipos_producto', 'tipos-producto-tbody')
+    );
+    initTipoProductoHecho = true;
+  }
+  await renderLista('tipos_producto', 'tipos-producto-tbody');
+}
 
+// ===================================================================
+// TIPOS DE MADERA
+// ===================================================================
+export async function initTiposMadera() {
+  const section = document.getElementById('section-tipos-madera');
+  if (!initTipoMaderaHecho) {
+    section.innerHTML = `
+      <div class="section-header"><h2>Tipos de madera</h2></div>
       <div class="form-card">
-        <h3>Tipos de madera</h3>
         <form id="form-nueva-madera" class="form-grid">
           <label class="full">Nuevo tipo de madera
             <input name="nombre" placeholder="ej: Álamo" required>
@@ -50,89 +63,17 @@ export async function initConfiguracion() {
           </table>
         </div>
       </div>
-
-      ${esSuperusuario ? `
-      <div class="form-card">
-        <h3>Roles</h3>
-        <form id="form-nuevo-rol" class="form-grid">
-          <label class="full">Nuevo rol
-            <input name="nombre" placeholder="ej: Supervisor de compras" required>
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
-          </div>
-        </form>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
-            <tbody id="roles-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <h3>Asignación de roles</h3>
-        <p class="ts">Solo aparecen las personas que ya iniciaron sesión en la app al menos una vez.</p>
-        <div id="asignacion-leyenda"></div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr id="asignacion-thead"><th>Persona</th></tr></thead>
-            <tbody id="asignacion-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <h3>Usuarios autorizados</h3>
-        <form id="form-nuevo-usuario" class="form-grid">
-          <label>Email *
-            <input name="email" type="email" placeholder="persona@gmail.com" required>
-          </label>
-          <label>Nombre *
-            <input name="nombre" placeholder="Cómo se la nombra en la app" required>
-          </label>
-          <label class="checkbox" style="flex-direction: row; align-items: center;">
-            <input type="checkbox" name="es_superusuario"> Es súper usuario
-          </label>
-          <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
-          </div>
-        </form>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead><tr><th>Email</th><th>Nombre</th><th>Estado</th><th>Súper usuario</th><th></th></tr></thead>
-            <tbody id="usuarios-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-      ` : ''}
     `;
-
-    document.getElementById('form-nuevo-tipo-producto').addEventListener('submit', (e) =>
-      agregarValor(e, 'tipos_producto', 'tipos-producto-tbody')
-    );
     document.getElementById('form-nueva-madera').addEventListener('submit', (e) =>
       agregarValor(e, 'tipos_madera', 'tipos-madera-tbody')
     );
-    if (esSuperusuario) {
-      document.getElementById('form-nuevo-rol').addEventListener('submit', (e) =>
-        agregarValor(e, 'roles', 'roles-tbody', cargarAsignacionRoles)
-      );
-      document.getElementById('form-nuevo-usuario').addEventListener('submit', agregarUsuarioAutorizado);
-    }
-
-    initialized = true;
+    initTipoMaderaHecho = true;
   }
-
-  await renderLista('tipos_producto', 'tipos-producto-tbody');
   await renderLista('tipos_madera', 'tipos-madera-tbody');
-  if (esSuperusuario) {
-    await renderLista('roles', 'roles-tbody', cargarAsignacionRoles);
-    await cargarAsignacionRoles();
-    await cargarUsuariosAutorizados();
-  }
 }
 
+// Helpers compartidos por tipos_producto / tipos_madera (listas simples
+// con nombre + activo)
 async function agregarValor(e, tabla, tbodyId, onChange) {
   e.preventDefault();
   const form = e.target;
@@ -249,6 +190,140 @@ async function renderLista(tabla, tbodyId, onChange) {
   );
 }
 
+// ===================================================================
+// ROLES (ABM de los roles en sí, solo súper usuario)
+// ===================================================================
+export async function initRoles() {
+  const section = document.getElementById('section-roles');
+  if (!initRolesHecho) {
+    section.innerHTML = `
+      <div class="section-header"><h2>Roles</h2></div>
+      <div class="form-card">
+        <form id="form-nuevo-rol" class="form-grid">
+          <label class="full">Nuevo rol
+            <input name="nombre" placeholder="ej: Supervisor de compras" required>
+          </label>
+          <label class="full">Descripción (se muestra como ayuda en Asignación de roles)
+            <input name="descripcion" placeholder="ej: Puede cargar recepciones y consultar el stock">
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Nombre</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="roles-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.getElementById('form-nuevo-rol').addEventListener('submit', agregarRol);
+    initRolesHecho = true;
+  }
+  await renderListaRoles();
+}
+
+async function agregarRol(e) {
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  const nombre = fd.get('nombre').trim();
+  if (!nombre) return;
+
+  const { error } = await supabase.from('roles').insert({
+    nombre,
+    descripcion: fd.get('descripcion')?.trim() || null,
+  });
+  if (error) {
+    alert('No se pudo agregar: ' + error.message);
+    return;
+  }
+  form.reset();
+  await renderListaRoles();
+}
+
+async function renderListaRoles() {
+  const tbody = document.getElementById('roles-tbody');
+  tbody.innerHTML = '<tr><td colspan="3">Cargando...</td></tr>';
+
+  const { data, error } = await supabase.from('roles').select('*').order('nombre');
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="3">Error al cargar: ${escapeHtml(error.message)}</td></tr>`;
+    return;
+  }
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="3">Todavía no hay roles cargados.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => `
+    <tr data-id="${r.id}">
+      <td><strong>${escapeHtml(r.nombre)}</strong><br><span class="ts">${escapeHtml(r.descripcion || 'Sin descripción.')}</span></td>
+      <td>${r.activo
+        ? '<span class="badge badge-ok">Activo</span>'
+        : '<span class="badge badge-off">Inactivo</span>'}</td>
+      <td>
+        <button class="btn btn-text btn-sm" data-toggle-rol="${r.id}" data-activo="${r.activo}">
+          ${r.activo ? 'Desactivar' : 'Activar'}
+        </button>
+        <button class="btn btn-text btn-sm" data-borrar-rol="${r.id}">Borrar</button>
+      </td>
+    </tr>
+  `).join('');
+
+  tbody.querySelectorAll('[data-toggle-rol]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      const { error: errToggle } = await supabase
+        .from('roles')
+        .update({ activo: btn.dataset.activo !== 'true' })
+        .eq('id', btn.dataset.toggleRol);
+      if (errToggle) {
+        alert('No se pudo actualizar: ' + errToggle.message);
+        return;
+      }
+      await renderListaRoles();
+    })
+  );
+
+  tbody.querySelectorAll('[data-borrar-rol]').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      if (!confirm('¿Borrar este rol? Se les va a quitar a todas las personas que lo tuvieran asignado.')) return;
+      const { error: errDelete } = await supabase.from('roles').delete().eq('id', btn.dataset.borrarRol);
+      if (errDelete) {
+        alert('No se pudo borrar: ' + errDelete.message);
+        return;
+      }
+      await renderListaRoles();
+    })
+  );
+}
+
+// ===================================================================
+// ASIGNACIÓN DE ROLES (matriz personas × roles, solo súper usuario)
+// ===================================================================
+export async function initAsignacionRoles() {
+  const section = document.getElementById('section-asignacion-roles');
+  if (!initAsignacionHecho) {
+    section.innerHTML = `
+      <div class="section-header"><h2>Asignación de roles</h2></div>
+      <div class="form-card">
+        <p class="ts">Solo aparecen las personas que ya iniciaron sesión en la app al menos una vez. Pasá el mouse sobre el nombre de un rol o sobre un checkbox para ver qué permite.</p>
+        <div id="asignacion-leyenda"></div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr id="asignacion-thead"><th>Persona</th></tr></thead>
+            <tbody id="asignacion-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    initAsignacionHecho = true;
+  }
+  await cargarAsignacionRoles();
+}
+
 async function cargarAsignacionRoles() {
   const thead = document.getElementById('asignacion-thead');
   const tbody = document.getElementById('asignacion-tbody');
@@ -312,6 +387,43 @@ async function cargarAsignacionRoles() {
       }
     })
   );
+}
+
+// ===================================================================
+// USUARIOS AUTORIZADOS (solo súper usuario)
+// ===================================================================
+export async function initUsuarios() {
+  const section = document.getElementById('section-usuarios');
+  if (!initUsuariosHecho) {
+    section.innerHTML = `
+      <div class="section-header"><h2>Usuarios autorizados</h2></div>
+      <div class="form-card">
+        <form id="form-nuevo-usuario" class="form-grid">
+          <label>Email *
+            <input name="email" type="email" placeholder="persona@gmail.com" required>
+          </label>
+          <label>Nombre *
+            <input name="nombre" placeholder="Cómo se la nombra en la app" required>
+          </label>
+          <label class="checkbox" style="flex-direction: row; align-items: center;">
+            <input type="checkbox" name="es_superusuario"> Es súper usuario
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Agregar</button>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Email</th><th>Nombre</th><th>Estado</th><th>Súper usuario</th><th></th></tr></thead>
+            <tbody id="usuarios-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    document.getElementById('form-nuevo-usuario').addEventListener('submit', agregarUsuarioAutorizado);
+    initUsuariosHecho = true;
+  }
+  await cargarUsuariosAutorizados();
 }
 
 async function agregarUsuarioAutorizado(e) {

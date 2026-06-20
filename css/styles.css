@@ -48,6 +48,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .sidebar { display: flex; flex-direction: column; gap: 0.25rem; padding: 1rem; width: 200px; flex-shrink: 0; border-right: 1px solid var(--border); background: var(--bg-card); }
 .nav-group-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 600; padding: 0.8rem 0.8rem 0.2rem; }
 .nav-group-label:first-child { padding-top: 0; }
+.nav-subgroup-label { font-size: 0.72rem; color: var(--text-muted); font-weight: 600; padding: 0.5rem 0.8rem 0.1rem 1.2rem; }
+.nav-item-sub { padding-left: 1.2rem; font-size: 0.9rem; }
 .nav-item { text-align: left; background: none; border: none; padding: 0.6rem 0.8rem; border-radius: 6px; cursor: pointer; color: var(--text); font-size: 0.95rem; }
 .nav-item.active { background: var(--bg); color: var(--primary-dark); font-weight: 600; }
 .nav-item:hover { background: var(--bg); }
