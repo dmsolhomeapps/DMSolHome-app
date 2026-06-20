@@ -75,7 +75,9 @@ for each row execute function fn_set_who_columns();
 
 insert into roles (nombre, descripcion) values
   ('Editor de órdenes', 'Puede modificar órdenes de compra ya creadas'),
-  ('Supervisor de compras', 'Recibe los avisos de órdenes próximas a vencer');
+  ('Supervisor de compras', 'Recibe los avisos de órdenes próximas a vencer'),
+  ('Comprador', 'Acceso a la pantalla de Órdenes de compra'),
+  ('Inventario', 'Acceso a Proveedores, Inventario, Recepciones y Stock');
 
 create table perfiles_roles (
   perfil_id uuid not null references perfiles(id) on delete cascade,
@@ -360,6 +362,7 @@ create table movimientos_stock (
     'ingreso_laqueado','egreso_laqueado'
   )),
   cantidad numeric not null check (cantidad > 0),
+  ubicacion text not null default 'almacen' check (ubicacion in ('almacen', 'mercado_libre')),
   referencia_tipo text,
   referencia_id uuid,
   fecha timestamptz not null default now(),
@@ -378,7 +381,7 @@ before insert or update on movimientos_stock
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- VISTA: stock actual por cantidades (total y laqueado) por SKU
+-- VISTA: stock actual por cantidades (total, por ubicación y laqueado)
 -- =========================================================
 create view stock_actual
 with (security_invoker = true) as
@@ -394,6 +397,16 @@ select
     when m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
     else 0
   end), 0) as stock_total,
+  coalesce(sum(case
+    when m.ubicacion = 'almacen' and m.tipo in ('ingreso_compra','ajuste_positivo') then m.cantidad
+    when m.ubicacion = 'almacen' and m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
+    else 0
+  end), 0) as stock_almacen,
+  coalesce(sum(case
+    when m.ubicacion = 'mercado_libre' and m.tipo in ('ingreso_compra','ajuste_positivo') then m.cantidad
+    when m.ubicacion = 'mercado_libre' and m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
+    else 0
+  end), 0) as stock_mercado_libre,
   coalesce(sum(case
     when m.tipo = 'ingreso_laqueado' then m.cantidad
     when m.tipo = 'egreso_laqueado' then -m.cantidad
