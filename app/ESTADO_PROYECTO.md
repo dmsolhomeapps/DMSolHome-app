@@ -129,7 +129,9 @@ no se sepa de qué orden vino.
 - ✅ Stock (vista actual + filtros + búsqueda por código QR)
 - ✅ Órdenes de compra (alta con ítems + listado + detalle)
 - ✅ Recepciones (registrar lo que llega contra una orden, total o parcial)
-- ✅ Configuración (gestión de las listas Tipos de producto y Tipos de madera; a futuro se suma ahí el ABM de usuarios autorizados)
+- ✅ Configuración (gestión de las listas Tipos de producto y Tipos de
+  madera para todos; Roles, Asignación de roles y Usuarios autorizados
+  solo visibles para el súper usuario)
 
 Pendiente de probar de punta a punta: crear una orden de compra, registrar
 una recepción contra ella (total o parcial) y confirmar que el stock y el

@@ -107,6 +107,12 @@ alter table roles enable row level security;
 alter table perfiles_roles enable row level security;
 
 create policy "lectura_interna" on emails_autorizados for select to authenticated using (true);
+create policy "emails_autorizados_alta_superusuario" on emails_autorizados
+  for insert to authenticated with check (fn_es_superusuario());
+create policy "emails_autorizados_edicion_superusuario" on emails_autorizados
+  for update to authenticated using (fn_es_superusuario()) with check (fn_es_superusuario());
+create policy "emails_autorizados_baja_superusuario" on emails_autorizados
+  for delete to authenticated using (fn_es_superusuario());
 create policy "lectura_perfiles" on perfiles for select to authenticated using (true);
 
 grant usage on schema public to authenticated;
