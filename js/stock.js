@@ -163,7 +163,7 @@ function abrirFormularioLaqueado(btn) {
   const wrap = document.createElement('div');
   wrap.className = 'laqueado-inline';
   wrap.innerHTML = `
-    <input type="number" min="0.01" step="1" placeholder="Cantidad" style="width:90px">
+    <input type="number" min="1" step="1" placeholder="Cantidad" style="width:90px">
     <button type="button" class="btn btn-text btn-sm" data-confirmar>Confirmar</button>
     <button type="button" class="btn btn-text btn-sm" data-cancelar>Cancelar</button>
   `;
