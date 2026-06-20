@@ -83,24 +83,73 @@ Supabase, ese archivo solo alcanza.
 ## Roles y permisos
 
 Hay un súper usuario fijo (`dmsolhomeapps@gmail.com`, marcado con
-`es_superusuario = true` en `emails_autorizados`) que es el único que
-puede ver y modificar las pantallas de Roles y Asignación de roles - a
-los demás usuarios ni se les muestran esos paneles en Configuración, y
-si intentaran leerlos o escribirlos por fuera de la app (por ejemplo
-llamando directo a la API), la base los rechaza igual por RLS. El súper
-usuario además pasa automáticamente cualquier chequeo de rol
-(`fn_tiene_rol`), así que tiene acceso total sin tener que
-autoasignarse nada.
+`es_superusuario = true` en `emails_autorizados`) que ve y puede hacer
+todo, y es el único que puede ver y modificar las pantallas de Roles,
+Asignación de roles y Usuarios autorizados - a los demás usuarios ni se
+les muestran esos paneles en Configuración, y si intentaran leerlos o
+escribirlos por fuera de la app la base los rechaza igual por RLS.
 
-Aparte del súper usuario, hay una tabla `roles` (editable solo por él
-desde Configuración) y una asignación `perfiles_roles` (también solo
-él, con una matriz de personas × roles). El rol "Editor de órdenes" es
-el único que hoy se usa para algo concreto: solo quien lo tenga
-asignado (o sea el súper usuario) puede editar una orden de compra ya
-creada (la edición es solo de cabecera: proveedor, tipo, fechas, días
-de aviso y notas - no se editan los ítems/cantidades). El rol
-"Supervisor de compras" está creado pero todavía sin uso real más allá
-de identificar a la persona si en el futuro se agrega el envío de mails.
+Aparte del súper usuario hay 4 roles operativos (un usuario puede tener
+varios a la vez):
+- **Comprador**: ve Proveedores y Órdenes de compra, y es el único
+  (junto al súper usuario) que puede editar una orden de compra ya
+  creada (cabecera solamente: proveedor, tipo, fechas, días de aviso y
+  notas - no los ítems/cantidades).
+- **Supervisor de Almacén**: ve Recepciones, Inventario y Stock, y es
+  el único (junto al súper usuario) que puede hacer ajustes manuales de
+  stock (alta/baja) y registrar laqueado desde la pantalla de Stock.
+- **Operador de Almacén**: ve Recepciones, Inventario y Stock, pero NO
+  ve los botones de ajuste de stock ni de laqueado (son de solo
+  consulta para este rol).
+- **Configurador**: ve Proveedores y Configuración (Tipos de producto/
+  madera), y es el único (junto al súper usuario) que puede dar de alta
+  o editar artículos de inventario - el resto de los roles solo puede
+  verlos.
+
+Las descripciones de cada rol están guardadas en la columna
+`descripcion` de la tabla `roles`, y se muestran como ayuda en la
+pantalla de Asignación de roles (como leyenda visible arriba de la
+tabla y como tooltip al pasar el mouse sobre cada checkbox).
+
+Hoy hay dos lugares donde el rol no solo decide qué pantalla se ve,
+sino que además está reforzado a nivel de base de datos (RLS): la
+edición de una orden de compra (rol Comprador) y los ajustes/laqueado
+de stock (rol Supervisor de Almacén) e inventario (alta/edición, rol
+Configurador). El resto de las pantallas (Proveedores, Recepciones,
+lectura de Inventario y Stock) solo está filtrado a nivel de menú, sin
+restricción de datos por debajo - por ejemplo, un Comprador sigue
+pudiendo leer la tabla `inventario` aunque no vea esa pantalla, porque
+la necesita para elegir artículos al armar una orden.
+
+El súper usuario pasa automáticamente cualquier chequeo de rol
+(`fn_tiene_rol`), sin tener que autoasignarse nada.
+
+## Menú agrupado
+
+El menú de la izquierda se arma dinámicamente en `js/app.js` (ya no está
+fijo en `index.html`) según los roles de quien inició sesión, agrupado
+en tres secciones: **Maestros** (Proveedores, Inventario), **Gestión**
+(Órdenes de compra, Recepciones, Stock) y **Configuración**. Si un grupo
+queda sin ningún ítem visible para esa persona, ni el título del grupo
+se muestra. La primera pantalla visible para cada usuario se activa
+sola al iniciar sesión (no hay una pantalla "default" fija, porque
+depende de qué rol tenga cada uno).
+
+## Stock por ubicación
+
+Cada movimiento en `movimientos_stock` tiene una `ubicacion` (`almacen`
+o `mercado_libre`). La vista `stock_actual` separa el stock en
+`stock_almacen`, `stock_mercado_libre` y `stock_total` (suma de ambas),
+además del `stock_laqueado` que ya existía (ese no se separa por
+ubicación, es una dimensión aparte sobre el acabado del mueble). Por
+ahora el pase de un lado a otro es manual vía el ajuste de stock; la
+sincronización automática con Mercado Libre sigue pendiente (ver lista
+de pendientes).
+
+En la pantalla de Stock hay un botón "Ajuste de stock (alta/baja)" para
+corregir diferencias a mano sin pasar por una recepción o una venta -
+queda registrado igual en `movimientos_stock` como `ajuste_positivo`/
+`ajuste_negativo`, con `referencia_tipo = 'ajuste_manual'`.
 
 ## Alerta de órdenes próximas a vencer
 
@@ -126,7 +175,8 @@ no se sepa de qué orden vino.
 - ✅ Login con Google + control de acceso
 - ✅ ABM Proveedores
 - ✅ ABM Inventario
-- ✅ Stock (vista actual + filtros + búsqueda por código QR)
+- ✅ Stock (vista actual por ubicación + filtros + búsqueda por código
+  QR escaneando con la cámara + ajuste manual de alta/baja)
 - ✅ Órdenes de compra (alta con ítems + listado + detalle)
 - ✅ Recepciones (registrar lo que llega contra una orden, total o parcial)
 - ✅ Configuración (gestión de las listas Tipos de producto y Tipos de

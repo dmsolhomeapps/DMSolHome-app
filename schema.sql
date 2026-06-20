@@ -74,8 +74,10 @@ before insert or update on roles
 for each row execute function fn_set_who_columns();
 
 insert into roles (nombre, descripcion) values
-  ('Editor de órdenes', 'Puede modificar órdenes de compra ya creadas'),
-  ('Supervisor de compras', 'Recibe los avisos de órdenes próximas a vencer');
+  ('Comprador', 'Puede cargar proveedores y cargar/editar órdenes de compra'),
+  ('Supervisor de Almacén', 'Puede cargar recepciones, ver el inventario, consultar el stock y hacer altas/bajas directas de stock'),
+  ('Operador de Almacén', 'Puede cargar recepciones, ver el inventario y consultar el stock (sin poder modificarlo)'),
+  ('Configurador', 'Puede dar de alta proveedores, artículos de inventario, tipos de producto y tipos de madera');
 
 create table perfiles_roles (
   perfil_id uuid not null references perfiles(id) on delete cascade,
@@ -360,6 +362,7 @@ create table movimientos_stock (
     'ingreso_laqueado','egreso_laqueado'
   )),
   cantidad numeric not null check (cantidad > 0),
+  ubicacion text not null default 'almacen' check (ubicacion in ('almacen', 'mercado_libre')),
   referencia_tipo text,
   referencia_id uuid,
   fecha timestamptz not null default now(),
@@ -378,7 +381,7 @@ before insert or update on movimientos_stock
 for each row execute function fn_set_who_columns();
 
 -- =========================================================
--- VISTA: stock actual por cantidades (total y laqueado) por SKU
+-- VISTA: stock actual por cantidades (total, por ubicación y laqueado)
 -- =========================================================
 create view stock_actual
 with (security_invoker = true) as
@@ -394,6 +397,16 @@ select
     when m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
     else 0
   end), 0) as stock_total,
+  coalesce(sum(case
+    when m.ubicacion = 'almacen' and m.tipo in ('ingreso_compra','ajuste_positivo') then m.cantidad
+    when m.ubicacion = 'almacen' and m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
+    else 0
+  end), 0) as stock_almacen,
+  coalesce(sum(case
+    when m.ubicacion = 'mercado_libre' and m.tipo in ('ingreso_compra','ajuste_positivo') then m.cantidad
+    when m.ubicacion = 'mercado_libre' and m.tipo in ('egreso_venta','ajuste_negativo') then -m.cantidad
+    else 0
+  end), 0) as stock_mercado_libre,
   coalesce(sum(case
     when m.tipo = 'ingreso_laqueado' then m.cantidad
     when m.tipo = 'egreso_laqueado' then -m.cantidad
@@ -532,8 +545,13 @@ create policy "acceso_interno" on tipos_producto for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on tipos_madera for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on inventario for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "inventario_lectura" on inventario for select to authenticated
+  using (fn_usuario_autorizado());
+create policy "inventario_alta" on inventario for insert to authenticated
+  with check (fn_usuario_autorizado() and fn_tiene_rol('Configurador'));
+create policy "inventario_edicion" on inventario for update to authenticated
+  using (fn_usuario_autorizado() and fn_tiene_rol('Configurador'))
+  with check (fn_usuario_autorizado() and fn_tiene_rol('Configurador'));
 create policy "roles_solo_superusuario" on roles for all to authenticated
   using (fn_es_superusuario()) with check (fn_es_superusuario());
 create policy "perfiles_roles_solo_superusuario" on perfiles_roles for all to authenticated
@@ -546,8 +564,8 @@ create policy "ordenes_alta" on ordenes_compra for insert to authenticated
 create policy "ordenes_baja" on ordenes_compra for delete to authenticated
   using (fn_usuario_autorizado());
 create policy "ordenes_edicion_restringida" on ordenes_compra for update to authenticated
-  using (fn_usuario_autorizado() and fn_tiene_rol('Editor de órdenes'))
-  with check (fn_usuario_autorizado() and fn_tiene_rol('Editor de órdenes'));
+  using (fn_usuario_autorizado() and fn_tiene_rol('Comprador'))
+  with check (fn_usuario_autorizado() and fn_tiene_rol('Comprador'));
 
 create policy "acceso_interno" on ordenes_compra_items for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
@@ -555,8 +573,15 @@ create policy "acceso_interno" on recepciones for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
 create policy "acceso_interno" on recepciones_items for all to authenticated
   using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
-create policy "acceso_interno" on movimientos_stock for all to authenticated
-  using (fn_usuario_autorizado()) with check (fn_usuario_autorizado());
+create policy "movimientos_lectura" on movimientos_stock for select to authenticated
+  using (fn_usuario_autorizado());
+create policy "movimientos_alta" on movimientos_stock for insert to authenticated
+  with check (
+    fn_usuario_autorizado() and (
+      tipo in ('ingreso_compra', 'egreso_venta')
+      or fn_tiene_rol('Supervisor de Almacén')
+    )
+  );
 
 grant all on all tables in schema public to authenticated;
 grant select on stock_actual to authenticated;

@@ -37,7 +37,7 @@ export async function initOrdenes() {
 }
 
 async function cargarPermiso() {
-  const { data, error } = await supabase.rpc('fn_tiene_rol', { p_rol_nombre: 'Editor de órdenes' });
+  const { data, error } = await supabase.rpc('fn_tiene_rol', { p_rol_nombre: 'Comprador' });
   puedeEditarOrdenes = !error && data === true;
 }
 

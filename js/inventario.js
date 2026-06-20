@@ -1,5 +1,6 @@
 import { supabase } from './supabaseClient.js';
 import QRCode from 'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/+esm';
+import { tienePermiso } from './permisos.js';
 
 let initialized = false;
 let cacheInventario = [];
@@ -7,9 +8,11 @@ let cacheProveedores = [];
 let cacheTiposProducto = [];
 let cacheTiposMadera = [];
 let seleccionados = new Set();
+let puedeEditarInventario = false;
 
 export async function initInventario() {
   const section = document.getElementById('section-inventario');
+  puedeEditarInventario = tienePermiso(['configurador']);
 
   if (!initialized) {
     section.innerHTML = `
@@ -18,7 +21,7 @@ export async function initInventario() {
         <div>
           <button id="btn-imprimir-qr-todos" class="btn btn-secondary">Imprimir QR (todos)</button>
           <button id="btn-imprimir-qr-seleccion" class="btn btn-secondary">Imprimir QR (seleccionados)</button>
-          <button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>
+          ${puedeEditarInventario ? '<button id="btn-nuevo-articulo" class="btn btn-primary">+ Nuevo artículo</button>' : ''}
         </div>
       </div>
       <div id="articulo-form-wrap" class="form-card hidden"></div>
@@ -46,7 +49,9 @@ export async function initInventario() {
         </table>
       </div>
     `;
-    document.getElementById('btn-nuevo-articulo').addEventListener('click', () => openForm());
+    if (puedeEditarInventario) {
+      document.getElementById('btn-nuevo-articulo').addEventListener('click', () => openForm());
+    }
     document.getElementById('filtro-tipo-inv').addEventListener('change', renderTabla);
     document.getElementById('filtro-sku-inv').addEventListener('input', renderTabla);
     document.getElementById('btn-imprimir-qr-todos').addEventListener('click', () =>
@@ -162,10 +167,12 @@ function renderTabla() {
         ? '<span class="badge badge-ok">Activo</span>'
         : '<span class="badge badge-off">Inactivo</span>'}</td>
       <td>
-        <button class="btn btn-text btn-sm" data-edit="${item.id}">Editar</button>
-        <button class="btn btn-text btn-sm" data-toggle="${item.id}" data-activo="${item.activo}">
-          ${item.activo ? 'Desactivar' : 'Activar'}
-        </button>
+        ${puedeEditarInventario ? `
+          <button class="btn btn-text btn-sm" data-edit="${item.id}">Editar</button>
+          <button class="btn btn-text btn-sm" data-toggle="${item.id}" data-activo="${item.activo}">
+            ${item.activo ? 'Desactivar' : 'Activar'}
+          </button>
+        ` : '-'}
       </td>
     </tr>
   `).join('');

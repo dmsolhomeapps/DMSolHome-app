@@ -6,14 +6,34 @@ import { initStock } from './stock.js';
 import { initOrdenes } from './ordenes.js';
 import { initRecepciones } from './recepciones.js';
 import { initConfiguracion } from './configuracion.js';
+import { cargarPermisos, tienePermiso } from './permisos.js';
 
-const sectionInitializers = {
-  inventario: initInventario,
-  stock: initStock,
-  ordenes: initOrdenes,
-  recepciones: initRecepciones,
-  configuracion: initConfiguracion,
-};
+// roles: claves que requiere ver esta pantalla ('comprador',
+// 'supervisorAlmacen', 'operadorAlmacen', 'configurador'). Vacío =
+// visible para cualquier usuario autorizado, sin restricción de rol.
+const navGroups = [
+  {
+    label: 'Maestros',
+    items: [
+      { key: 'proveedores', label: 'Proveedores', init: initProveedores, roles: ['comprador', 'configurador'] },
+      { key: 'inventario', label: 'Inventario', init: initInventario, roles: ['supervisorAlmacen', 'operadorAlmacen', 'configurador'] },
+    ],
+  },
+  {
+    label: 'Gestión',
+    items: [
+      { key: 'ordenes', label: 'Órdenes de compra', init: initOrdenes, roles: ['comprador'] },
+      { key: 'recepciones', label: 'Recepciones', init: initRecepciones, roles: ['supervisorAlmacen', 'operadorAlmacen'] },
+      { key: 'stock', label: 'Stock', init: initStock, roles: ['supervisorAlmacen', 'operadorAlmacen'] },
+    ],
+  },
+  {
+    label: 'Configuración',
+    items: [
+      { key: 'configuracion', label: 'Configuración', init: initConfiguracion, roles: ['configurador'] },
+    ],
+  },
+];
 
 const screens = {
   login: document.getElementById('login-screen'),
@@ -24,6 +44,44 @@ const screens = {
 function showScreen(name) {
   Object.values(screens).forEach(s => s.classList.add('hidden'));
   screens[name].classList.remove('hidden');
+}
+
+function construirMenu() {
+  const nav = document.getElementById('sidebar-nav');
+  let primerItemVisible = null;
+
+  nav.innerHTML = navGroups.map(grupo => {
+    const itemsVisibles = grupo.items.filter(item => tienePermiso(item.roles));
+    if (!itemsVisibles.length) return '';
+
+    if (!primerItemVisible) primerItemVisible = itemsVisibles[0];
+
+    const mostrarHeader = !(itemsVisibles.length === 1 && itemsVisibles[0].label === grupo.label);
+
+    return `
+      ${mostrarHeader ? `<div class="nav-group-label">${grupo.label}</div>` : ''}
+      ${itemsVisibles.map(item =>
+        `<button class="nav-item" data-section="${item.key}">${item.label}</button>`
+      ).join('')}
+    `;
+  }).join('');
+
+  nav.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => activarSeccion(btn.dataset.section));
+  });
+
+  return primerItemVisible;
+}
+
+async function activarSeccion(key) {
+  document.querySelectorAll('.nav-item').forEach(b =>
+    b.classList.toggle('active', b.dataset.section === key)
+  );
+  document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('section-' + key).classList.remove('hidden');
+
+  const item = navGroups.flatMap(g => g.items).find(i => i.key === key);
+  if (item?.init) await item.init();
 }
 
 async function handleSession(session) {
@@ -43,24 +101,15 @@ async function handleSession(session) {
 
   document.getElementById('user-name').textContent = perfil.nombre || user.email;
   showScreen('app');
-  await initProveedores();
+
+  await cargarPermisos();
+  const primerItem = construirMenu();
+  if (primerItem) await activarSeccion(primerItem.key);
 }
 
 document.getElementById('btn-google-login').addEventListener('click', signInWithGoogle);
 document.getElementById('btn-logout').addEventListener('click', signOut);
 document.getElementById('btn-logout-denied').addEventListener('click', signOut);
-
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
-    document.getElementById('section-' + btn.dataset.section).classList.remove('hidden');
-
-    const init = sectionInitializers[btn.dataset.section];
-    if (init) await init();
-  });
-});
 
 supabase.auth.onAuthStateChange((_event, session) => {
   handleSession(session);

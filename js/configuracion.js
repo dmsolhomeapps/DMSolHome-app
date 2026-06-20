@@ -73,6 +73,7 @@ export async function initConfiguracion() {
       <div class="form-card">
         <h3>Asignación de roles</h3>
         <p class="ts">Solo aparecen las personas que ya iniciaron sesión en la app al menos una vez.</p>
+        <div id="asignacion-leyenda"></div>
         <div class="table-wrap">
           <table class="data-table">
             <thead><tr id="asignacion-thead"><th>Persona</th></tr></thead>
@@ -251,10 +252,11 @@ async function renderLista(tabla, tbodyId, onChange) {
 async function cargarAsignacionRoles() {
   const thead = document.getElementById('asignacion-thead');
   const tbody = document.getElementById('asignacion-tbody');
+  const leyenda = document.getElementById('asignacion-leyenda');
 
   const [perfilesRes, rolesRes, asignacionesRes] = await Promise.all([
     supabase.from('perfiles').select('id, email, nombre').order('email'),
-    supabase.from('roles').select('id, nombre').eq('activo', true).order('nombre'),
+    supabase.from('roles').select('id, nombre, descripcion').eq('activo', true).order('nombre'),
     supabase.from('perfiles_roles').select('perfil_id, rol_id'),
   ]);
 
@@ -262,8 +264,16 @@ async function cargarAsignacionRoles() {
   const rolesActivos = rolesRes.data || [];
   const asignaciones = asignacionesRes.data || [];
 
+  if (leyenda) {
+    leyenda.innerHTML = rolesActivos.length
+      ? '<ul class="leyenda-roles">' + rolesActivos.map(r =>
+          `<li><strong>${escapeHtml(r.nombre)}:</strong> ${escapeHtml(r.descripcion || 'Sin descripción.')}</li>`
+        ).join('') + '</ul>'
+      : '';
+  }
+
   thead.innerHTML = '<th>Persona</th>' +
-    rolesActivos.map(r => `<th>${escapeHtml(r.nombre)}</th>`).join('');
+    rolesActivos.map(r => `<th title="${escapeAttr(r.descripcion || '')}">${escapeHtml(r.nombre)}</th>`).join('');
 
   if (!perfiles.length) {
     tbody.innerHTML = `<tr><td colspan="${rolesActivos.length + 1}">Todavía nadie inició sesión.</td></tr>`;
@@ -279,7 +289,7 @@ async function cargarAsignacionRoles() {
       <td>${escapeHtml(p.nombre || p.email)}</td>
       ${rolesActivos.map(r => {
         const tiene = asignaciones.some(a => a.perfil_id === p.id && a.rol_id === r.id);
-        return `<td style="text-align:center"><input type="checkbox" data-perfil="${p.id}" data-rol="${r.id}" ${tiene ? 'checked' : ''}></td>`;
+        return `<td style="text-align:center"><input type="checkbox" data-perfil="${p.id}" data-rol="${r.id}" title="${escapeAttr(r.descripcion || '')}" ${tiene ? 'checked' : ''}></td>`;
       }).join('')}
     </tr>
   `).join('');
